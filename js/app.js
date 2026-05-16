@@ -489,9 +489,10 @@ class LofFundMonitor {
                 let incrRateText = '';
                 if (!isNaN(shares) && shares > 0) {
                     const rate = (incr / shares * 100).toFixed(2);
-                    incrRateText = ` (${rate}%)`;
+                    const sign = rate > 0 ? '+' : '';
+                    incrRateText = `<br><span class="${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate}%</span>`;
                 }
-                // 直接显示数值，保留两位小数，并添加比例
+                // 直接显示数值，保留两位小数，并添加比例（分行显示）
                 sharesIncrText = incr.toFixed(2) + incrRateText;
                 sharesIncrClass = incr > 0 ? 'premium-positive' : incr < 0 ? 'premium-negative' : 'premium-zero';
             }
@@ -644,9 +645,10 @@ class LofFundMonitor {
                 let incrRate = '';
                 if (!isNaN(shares) && shares > 0) {
                     const rate = (incr / shares * 100).toFixed(2);
-                    incrRate = ` (${rate}%)`;
+                    const sign = rate > 0 ? '+' : '';
+                    incrRate = `<div class="${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate}%</div>`;
                 }
-                sharesText = `新增份额${incr.toFixed(2)}万${incrRate}`;
+                sharesText = `<div>新增份额${incr.toFixed(2)}万</div>${incrRate}`;
                 sharesClass = incr > 0 ? 'mc-pos' : incr < 0 ? 'mc-neg' : '';
             }
         }
@@ -1353,7 +1355,8 @@ class LofFundMonitor {
                 let incrRateText = '';
                 if (!isNaN(shares) && shares > 0) {
                     const rate = (incr / shares * 100).toFixed(2);
-                    incrRateText = ` (${rate}%)`;
+                    const sign = rate > 0 ? '+' : '';
+                    incrRateText = `<br><span class="${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate}%</span>`;
                 }
                 sharesIncrText = incr.toFixed(2) + incrRateText;
             }
