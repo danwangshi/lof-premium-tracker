@@ -159,10 +159,6 @@ Legacy (后备数据源)
 
 ## 快速开始
 
-### 在线使用（无需部署）
-
-访问 **[lof-fund-monitor.pages.dev](https://lof-fund-monitor.pages.dev)** 即可直接使用。
-
 ### 本地开发
 
 详细的环境配置说明请参考 **[环境配置指南](ENV_SETUP.md)**。
