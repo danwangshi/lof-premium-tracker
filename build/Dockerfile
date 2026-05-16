@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # 安装 Python 依赖到指定目录
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN pip install --no-cachx=/install -r requirements.txte-dir --prefi
 
 # 多阶段构建 - 第二阶段：运行环境
 FROM python:3.11-slim

@@ -21,3 +21,15 @@ docker/
 ## ⚠️ 注意
 
 此目录下的文件通常较大，已添加到 `.gitignore`，不会被提交到 Git 仓库。
+
+## 🚀 快速开始
+
+构建文件位于 `build/` 目录，运行命令：
+
+```bash
+# 构建并启动
+docker compose -f build/docker-compose.yml up -d
+
+# 查看日志
+docker compose -f build/docker-compose.yml logs -f
+```
