@@ -483,9 +483,16 @@ class LofFundMonitor {
         let sharesIncrClass = 'premium-zero';
         if (fund.shares_incr !== null && fund.shares_incr !== undefined) {
             const incr = parseFloat(fund.shares_incr);  // 单位：万份，确保转换为数字
+            const shares = parseFloat(fund.shares);
             if (!isNaN(incr)) {
-                // 直接显示数值，保留两位小数
-                sharesIncrText = incr.toFixed(2);
+                // 计算新增比例
+                let incrRateText = '';
+                if (!isNaN(shares) && shares > 0) {
+                    const rate = (incr / shares * 100).toFixed(2);
+                    incrRateText = ` (${rate}%)`;
+                }
+                // 直接显示数值，保留两位小数，并添加比例
+                sharesIncrText = incr.toFixed(2) + incrRateText;
                 sharesIncrClass = incr > 0 ? 'premium-positive' : incr < 0 ? 'premium-negative' : 'premium-zero';
             }
         }
@@ -631,8 +638,15 @@ class LofFundMonitor {
         let sharesClass = '';
         if (fund.shares_incr !== null && fund.shares_incr !== undefined) {
             const incr = parseFloat(fund.shares_incr);
+            const shares = parseFloat(fund.shares);
             if (!isNaN(incr)) {
-                sharesText = `新增份额${incr.toFixed(2)}万`;
+                // 计算新增比例
+                let incrRate = '';
+                if (!isNaN(shares) && shares > 0) {
+                    const rate = (incr / shares * 100).toFixed(2);
+                    incrRate = ` (${rate}%)`;
+                }
+                sharesText = `新增份额${incr.toFixed(2)}万${incrRate}`;
                 sharesClass = incr > 0 ? 'mc-pos' : incr < 0 ? 'mc-neg' : '';
             }
         }
@@ -1333,8 +1347,15 @@ class LofFundMonitor {
         let sharesIncrText = '-';
         if (fund.shares_incr !== null && fund.shares_incr !== undefined) {
             const incr = parseFloat(fund.shares_incr);
+            const shares = parseFloat(fund.shares);
             if (!isNaN(incr)) {
-                sharesIncrText = incr.toFixed(2);
+                // 计算新增比例
+                let incrRateText = '';
+                if (!isNaN(shares) && shares > 0) {
+                    const rate = (incr / shares * 100).toFixed(2);
+                    incrRateText = ` (${rate}%)`;
+                }
+                sharesIncrText = incr.toFixed(2) + incrRateText;
             }
         }
 
