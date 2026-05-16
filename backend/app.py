@@ -502,6 +502,61 @@ def history():
         })
 
 
+@app.route("/api/shares", methods=["GET"])
+def get_shares():
+    """
+    获取基金份额数据
+    参数:
+      code: 基金代码（可选，不传则返回所有基金最新份额）
+      days: 查询天数（默认30，仅当指定code时有效）
+    """
+    _trigger_lazy_refresh()
+    hdb = get_history_db()
+
+    code = request.args.get("code")
+    code = code.strip().zfill(6) if code else None
+
+    if code:
+        # 单只基金份额历史
+        days = min(90, max(1, int(request.args.get("days", 30))))
+        data = hdb.get_shares_by_code(code=code, days=days)
+        latest = hdb.get_latest_shares(code=code)
+        
+        fund = get_fetcher().get_one(code)
+        fund_name = fund.get("name", code) if fund else code
+        
+        return ok({
+            "code": code,
+            "name": fund_name,
+            "latest": latest,
+            "history": data,
+        })
+    else:
+        # 全量最新份额
+        all_shares = hdb.get_all_latest_shares()
+        return ok({
+            "shares": all_shares,
+            "count": len(all_shares),
+        })
+
+
+@app.route("/api/shares/fetch", methods=["POST"])
+def fetch_shares_now():
+    """
+    立即触发份额数据抓取（后台执行）
+    """
+    try:
+        from data_fetcher import get_fetcher
+        fetcher = get_fetcher()
+        # 异步获取份额数据
+        fetcher._fetch_and_save_shares([])
+        return ok({
+            "message": "份额数据抓取任务已启动（后台执行）",
+        })
+    except Exception as e:
+        return err_resp(f"启动失败: {str(e)}", code=10, status=500)
+
+
 # ══════════════════════════════════════════════════════════════════
 # 懒更新机制（替代 APScheduler，适用于 Railway 等休眠平台）
 # ══════════════════════════════════════════════════════════════════

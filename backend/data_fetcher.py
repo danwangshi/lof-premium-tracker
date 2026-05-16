@@ -19,6 +19,7 @@ from config import Config
 from history_db import get_history_db
 from fee_fetcher import fetch_fees_batch, load_fee_cache, save_fee_cache
 from datasource.manager import get_datasource_manager
+from exchange_share_client import get_exchange_client
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +252,12 @@ class LOFDataFetcher:
                 fund["redemption_fee_rate"] = fee.get("redemption_fee_rate")
                 fund["purchase_limit"] = fee.get("purchase_limit")
 
+            # Step 6: 份额数据（异步获取，不阻塞主流程）
+            try:
+                self._fetch_and_save_shares(enriched.keys())
+            except Exception as ex:
+                logger.warning("Shares fetch failed: %s", ex)
+
             # 更新缓存
             with self._lock:
                 self._cache = enriched
@@ -316,6 +323,40 @@ class LOFDataFetcher:
 
         logger.info("Purchase status: %d/%d", len(result), len(codes))
         return result
+
+    def _fetch_and_save_shares(self, codes):
+        """
+        获取并保存基金份额数据（在后台线程中执行）
+        """
+        def fetch_shares_task():
+            try:
+                logger.info("Starting shares data fetch...")
+                client = get_exchange_client()
+                shares_data = client.fetch_all_shares()
+                
+                if shares_data:
+                    # 保存到数据库
+                    hdb = get_history_db()
+                    hdb.save_shares_batch(shares_data)
+                    logger.info(f"Saved shares data for {len(shares_data)} funds")
+                    
+                    # 将份额数据合并到当前缓存中
+                    with self._lock:
+                        for code, share_info in shares_data.items():
+                            if code in self._cache:
+                                self._cache[code]['shares'] = share_info.get('shares')
+                                self._cache[code]['shares_date'] = share_info.get('date')
+                                self._cache[code]['shares_source'] = share_info.get('source')
+                else:
+                    logger.warning("No shares data fetched")
+            except Exception as e:
+                logger.error(f"Failed to fetch shares: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+        
+        # 在后台线程中执行，不阻塞主流程
+        thread = threading.Thread(target=fetch_shares_task, daemon=True)
+        thread.start()
 
 
 # ── Singleton ─────────────────────────────────────

@@ -193,6 +193,22 @@ class HistoryDB:
             CREATE INDEX IF NOT EXISTS idx_kline_code_date
                 ON daily_kline (code, date DESC)
         """)
+        # 创建份额数据表
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS fund_shares (
+                date         DATE         NOT NULL,
+                code         VARCHAR(6)   NOT NULL
+                             REFERENCES funds(code) ON DELETE CASCADE,
+                shares       NUMERIC(18,2) NOT NULL DEFAULT 0,
+                source       VARCHAR(10)  NOT NULL DEFAULT '',
+                created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (date, code)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_shares_code_date
+                ON fund_shares (code, date DESC)
+        """)
 
     def _migrate_schema(self, cur):
         """从旧 schema 迁移到新 schema（事务内执行）"""
@@ -500,6 +516,108 @@ class HistoryDB:
 
     # ── Internal Helpers ─────────────────────────────
 
+    def save_shares_batch(self, shares_data: Dict[str, Dict], date: str = None):
+        """
+        批量保存基金份额数据
+        shares_data: { code: { shares, date, source }, ... }
+        date: 保存日期，默认为数据中的日期或今天
+        """
+        if not shares_data:
+            return
+        
+        snapshot_date = date or datetime.now().strftime("%Y-%m-%d")
+        rows = []
+        for code, data in shares_data.items():
+            shares = data.get('shares', 0)
+            source = data.get('source', '')
+            row_date = data.get('date', snapshot_date)
+            rows.append((row_date, code, shares, source))
+        
+        conn = self._pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO fund_shares (date, code, shares, source)
+                    VALUES %s
+                    ON CONFLICT (date, code) DO UPDATE SET
+                        shares = EXCLUDED.shares,
+                        source = EXCLUDED.source,
+                        created_at = NOW()
+                    """,
+                    rows,
+                    page_size=500,
+                )
+            conn.commit()
+            logger.info("Saved shares for %d funds on %s", len(rows), snapshot_date)
+        except Exception as e:
+            logger.error("Failed to save shares: %s", e)
+            conn.rollback()
+        finally:
+            self._pool.putconn(conn)
+    
+    def get_shares_by_code(self, code: str, days: int = 30) -> List[dict]:
+        """
+        获取某只基金的份额历史数据
+        """
+        cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        conn = self._pool.getconn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT date::TEXT AS date, code, shares, source
+                    FROM fund_shares
+                    WHERE code = %s AND date >= %s
+                    ORDER BY date DESC
+                    """,
+                    (code, cutoff)
+                )
+                return [dict(r) for r in cur.fetchall()]
+        finally:
+            self._pool.putconn(conn)
+    
+    def get_latest_shares(self, code: str) -> Optional[dict]:
+        """
+        获取某只基金最新的份额数据
+        """
+        conn = self._pool.getconn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT date::TEXT AS date, code, shares, source
+                    FROM fund_shares
+                    WHERE code = %s
+                    ORDER BY date DESC LIMIT 1
+                    """,
+                    (code,)
+                )
+                row = cur.fetchone()
+                return dict(row) if row else None
+        finally:
+            self._pool.putconn(conn)
+    
+    def get_all_latest_shares(self) -> Dict[str, dict]:
+        """
+        获取所有基金最新的份额数据
+        Returns: { code: { date, code, shares, source } }
+        """
+        conn = self._pool.getconn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT DISTINCT ON (code) 
+                        date::TEXT AS date, code, shares, source
+                    FROM fund_shares
+                    ORDER BY code, date DESC
+                """)
+                rows = cur.fetchall()
+                return {r['code']: dict(r) for r in rows}
+        finally:
+            self._pool.putconn(conn)
+
     def _cleanup(self):
         """清理超过 RETENTION_DAYS 的历史数据"""
         cutoff = (datetime.now() - timedelta(days=RETENTION_DAYS)).strftime("%Y-%m-%d")
@@ -512,6 +630,13 @@ class HistoryDB:
                 if cur.rowcount > 0:
                     conn.commit()
                     logger.info("Cleaned up %d rows older than %s", cur.rowcount, cutoff)
+                # 也清理份额数据
+                cur.execute(
+                    "DELETE FROM fund_shares WHERE date < %s", (cutoff,)
+                )
+                if cur.rowcount > 0:
+                    conn.commit()
+                    logger.info("Cleaned up %d shares rows older than %s", cur.rowcount, cutoff)
         except Exception as e:
             logger.error("Cleanup failed: %s", e)
             conn.rollback()
