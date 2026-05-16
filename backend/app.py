@@ -323,11 +323,11 @@ def list_funds():
     if sort_field == "premium_rate":
         items.sort(key=lambda x: x.get("premium_rate") if x.get("premium_rate") is not None else -9999.0, reverse=reverse)
     elif sort_field == "change_pct":
-        items.sort(key=lambda x: x.get("change_pct", 0), reverse=reverse)
+        items.sort(key=lambda x: x.get("change_pct") if x.get("change_pct") is not None else 0, reverse=reverse)
     elif sort_field == "amount":
-        items.sort(key=lambda x: x.get("amount", 0), reverse=reverse)
+        items.sort(key=lambda x: x.get("amount") if x.get("amount") is not None else 0, reverse=reverse)
     elif sort_field == "price":
-        items.sort(key=lambda x: x.get("price", 0), reverse=reverse)
+        items.sort(key=lambda x: x.get("price") if x.get("price") is not None else 0, reverse=reverse)
     elif sort_field == "code":
         items.sort(key=lambda x: x.get("code", ""), reverse=reverse)
     elif sort_field == "name":

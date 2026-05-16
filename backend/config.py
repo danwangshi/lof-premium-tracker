@@ -3,7 +3,21 @@
 配置文件
 """
 import os
+from pathlib import Path
 from urllib.parse import urlparse
+
+# 加载 .env 文件（如果存在）
+try:
+    from dotenv import load_dotenv
+    # 查找项目根目录的 .env 文件
+    env_path = Path(__file__).parent.parent / '.env'
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+        print(f"✅ Loaded environment variables from {env_path}")
+    else:
+        print("ℹ️  No .env file found, using system environment variables")
+except ImportError:
+    print("⚠️  python-dotenv not installed, skipping .env file loading")
 
 
 def _parse_db_url(url: str) -> dict:
