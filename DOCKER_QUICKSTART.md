@@ -9,10 +9,10 @@
 cd LOF-Fund-Tools
 
 # 2. 启动所有服务（PostgreSQL + Flask App）
-docker compose -f build/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml up -d
 
 # 3. 查看日志
-docker compose -f build/docker-compose.yml logs -f
+docker compose -f docker/docker-compose.yml logs -f
 
 # 4. 访问应用
 # Web: http://localhost:5000
@@ -53,20 +53,20 @@ docker run -d \
 
 ```bash
 # 启动服务
-docker compose -f build/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml up -d
 
 # 停止服务
-docker compose -f build/docker-compose.yml down
+docker compose -f docker/docker-compose.yml down
 
 # 重启服务
-docker compose -f build/docker-compose.yml restart
+docker compose -f docker/docker-compose.yml restart
 
 # 查看状态
-docker compose -f build/docker-compose.yml ps
+docker compose -f docker/docker-compose.yml ps
 
 # 查看日志
-docker compose -f build/docker-compose.yml logs -f app
-docker compose -f build/docker-compose.yml logs -f postgres
+docker compose -f docker/docker-compose.yml logs -f app
+docker compose -f docker/docker-compose.yml logs -f postgres
 ```
 
 ### 数据库操作
@@ -86,10 +86,10 @@ cat docker/backups/backup_20260516.sql | docker exec -i lof-postgres psql -U pos
 
 ```bash
 # 停止并删除容器、网络
-docker compose -f build/docker-compose.yml down
+docker compose -f docker/docker-compose.yml down
 
 # 删除卷（会清除数据！）
-docker compose -f build/docker-compose.yml down -v
+docker compose -f docker/docker-compose.yml down -v
 
 # 删除镜像
 docker rmi lof-fund-app
@@ -101,7 +101,7 @@ docker rmi lof-fund-app
 
 ### 环境变量
 
-在 `build/docker-compose.yml` 中配置：
+在 `docker/docker-compose.yml` 中配置：
 
 ```yaml
 environment:
@@ -169,10 +169,10 @@ except Exception as e:
 
 ```bash
 # 清除缓存重新构建
-docker compose -f build/docker-compose.yml build --no-cache
+docker compose -f docker/docker-compose.yml build --no-cache
 
 # 重新启动
-docker compose -f build/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml up -d
 ```
 
 ---
