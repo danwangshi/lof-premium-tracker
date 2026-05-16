@@ -2,7 +2,17 @@
 
 ## 🚀 一键启动
 
-### 方式一：Docker Compose（推荐）
+### 前置条件：构建镜像（首次使用）
+
+```bash
+# 方式一：使用 Docker Compose 构建（推荐）
+docker compose -f build/docker-compose.build.yml build
+
+# 方式二：直接使用 Dockerfile
+docker build -f build/Dockerfile -t lof-fund-app:latest .
+```
+
+### 启动服务
 
 ```bash
 # 1. 进入项目根目录
@@ -20,7 +30,7 @@ docker compose -f docker/docker-compose.yml logs -f
 # Health: http://localhost:5000/health
 ```
 
-### 方式二：单独构建镜像
+### 方式二：单独运行容器
 
 ```bash
 # 1. 构建镜像

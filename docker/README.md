@@ -15,6 +15,20 @@ docker/
 
 ## 🚀 快速开始
 
+### 前置条件：构建镜像（首次使用）
+
+在运行之前，需要先构建 Docker 镜像：
+
+```bash
+# 方式一：使用 Docker Compose 构建（推荐）
+docker compose -f build/docker-compose.build.yml build
+
+# 方式二：直接使用 Dockerfile
+docker build -f build/Dockerfile -t lof-fund-app:latest .
+```
+
+详细构建说明请参考 [build/README.md](../build/README.md)
+
 ### 一键启动
 
 ```bash

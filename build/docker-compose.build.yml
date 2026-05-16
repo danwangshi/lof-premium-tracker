@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  # Flask 应用（构建配置）
+  app:
+    build:
+      context: ..
+      dockerfile: build/Dockerfile
+    image: lof-fund-app:latest
+    container_name: lof-app-build
+    # 仅用于构建，不运行
+    command: echo "Build complete"

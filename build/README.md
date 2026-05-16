@@ -14,12 +14,21 @@ build/
 
 ### 1. 构建 Docker 镜像
 
+**方式一：使用 Docker Compose（推荐）**
+
 ```bash
 # 进入项目根目录
 cd LOF-Fund-Tools
 
 # 构建镜像
-docker build -f build/Dockerfile -t lof-fund-app .
+docker compose -f build/docker-compose.build.yml build
+```
+
+**方式二：直接使用 Dockerfile**
+
+```bash
+# 构建镜像
+docker build -f build/Dockerfile -t lof-fund-app:latest .
 ```
 
 ### 2. 运行容器

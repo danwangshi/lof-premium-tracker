@@ -25,9 +25,7 @@ services:
 
   # Flask 应用
   app:
-    build:
-      context: ..
-      dockerfile: build/Dockerfile
+    image: lof-fund-app:latest
     container_name: lof-app
     restart: unless-stopped
     environment:
