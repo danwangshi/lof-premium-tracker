@@ -378,6 +378,19 @@ class LofFundMonitor {
             estProfitAmountClass = estProfit.amount > 0 ? 'premium-positive' : estProfit.amount < 0 ? 'premium-negative' : 'premium-zero';
             estProfitInfoBtn = `<button class="btn-profit-info" data-code="${fund.code}" title="查看收益构成">?</button>`;
         }
+
+        // 场内份额数据
+        let sharesText = '-';
+        let sharesDateText = '';
+        if (fund.shares !== null && fund.shares !== undefined) {
+            // 转换为万份显示
+            const sharesWan = fund.shares / 10000;
+            sharesText = sharesWan >= 10000 ? (sharesWan / 10000).toFixed(2) + '亿' : sharesWan.toFixed(2) + '万';
+            if (fund.shares_date) {
+                sharesDateText = `<div class="shares-date">${fund.shares_date}</div>`;
+            }
+        }
+
         return `<tr class="fund-row" data-code="${fund.code}">
             <td class="col-code">${fund.code}</td>
             <td class="col-name" title="${fund.name}">${this.truncateName(fund.name)}</td>
@@ -389,6 +402,12 @@ class LofFundMonitor {
             <td class="col-amount">${amountText}</td>
             <td class="col-est-profit-rate ${estProfitRateClass}">${estProfitRateText}${estProfitInfoBtn}</td>
             <td class="col-est-profit-amount ${estProfitAmountClass}">${estProfitAmountText}${estProfitInfoBtn}</td>
+            <td class="col-shares">
+                <div class="shares-cell">
+                    <div class="shares-amount">${sharesText}</div>
+                    ${sharesDateText}
+                </div>
+            </td>
             <td class="col-status"><span class="status-badge ${fund.premium_status || ''}">${fund.premium_status || '未知'}</span></td>
             <td class="col-time">${fund.nav_date || '-'}</td>
         </tr>`;
@@ -459,6 +478,12 @@ class LofFundMonitor {
             profitText = profit1000 > 0 ? '+' + profit1000.toFixed(2) : profit1000.toFixed(2);
             profitClass = profit1000 > 0 ? 'mc-pos' : profit1000 < 0 ? 'mc-neg' : '';
         }
+        // 场内份额
+        let sharesText = '-';
+        if (fund.shares !== null && fund.shares !== undefined) {
+            const sharesWan = fund.shares / 10000;
+            sharesText = sharesWan >= 10000 ? (sharesWan / 10000).toFixed(2) + '亿' : sharesWan.toFixed(2) + '万';
+        }
         return `<div class="mobile-card" data-code="${fund.code}">
             <div class="mc-top-row">
                 <span class="mc-code">${fund.code}</span>
@@ -472,6 +497,10 @@ class LofFundMonitor {
                 <span class="mc-profit-label">千元可赚</span>
                 <span class="mc-profit-val ${profitClass}">${profitText}</span>
                 <button class="mc-profit-help" data-code="${fund.code}" title="查看计算详情">?</button>
+            </div>
+            <div class="mc-shares-row">
+                <span class="mc-shares-label">场内份额</span>
+                <span class="mc-shares-val">${sharesText}</span>
             </div>
         </div>`;
     }
