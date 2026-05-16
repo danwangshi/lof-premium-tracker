@@ -1,18 +1,5 @@
 # Docker 部署指南
 
-## 📋 目录结构
-
-```
-docker/
-├── docker-compose.yml     # Docker Compose 配置文件
-├── images/                # Docker 镜像导出文件（.tar/.tar.gz）
-├── backups/               # 数据库备份文件（.sql/.sql.gz）
-├── logs/                  # 应用日志文件
-└── README.md              # 本说明文件
-```
-
----
-
 ## 🚀 快速开始
 
 ### 前置条件：构建镜像（首次使用）
@@ -32,16 +19,16 @@ docker build -f build/Dockerfile -t lof-fund-app:latest .
 ### 一键启动
 
 ```bash
-# 进入项目根目录
+# 1. 进入项目根目录
 cd LOF-Fund-Tools
 
-# 启动所有服务（PostgreSQL + Flask App）
+# 2. 启动所有服务（PostgreSQL + Flask App）
 docker compose -f docker/docker-compose.yml up -d
 
-# 查看日志
+# 3. 查看日志
 docker compose -f docker/docker-compose.yml logs -f
 
-# 访问应用
+# 4. 访问应用
 # Web: http://localhost:5000
 # API: http://localhost:5000/api/funds
 # Health: http://localhost:5000/health
