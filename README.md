@@ -2,14 +2,14 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Web%20%7C%20API-green.svg)
 ![License](https://img.shields.io/badge/license-AGPLv3-red.svg)
 ![Status](https://img.shields.io/badge/status-active-brightgreen.svg)
-![DB](https://img.shields.io/badge/data-396%2F538%20funds%20%7C%2097K%20rows-orange.svg)
+![DB](https://img.shields.io/badge/data-~540%20funds%20%7C%20365d%20history-orange.svg)
 ![Website](https://img.shields.io/badge/www-jinkuaicha.com-1890ff.svg)
 
-**全市场 ~540 只深沪 LOF 实时折溢价监控 · 365天日线图表 · 套利模拟回测 · 溢价率排行 · PC + 移动端**
+**全市场 ~540 只深沪 LOF 实时折溢价监控 · 365天历史图表 · 套利模拟回测 · 场内份额追踪 · PC + 移动端**
 
 [在线使用](https://jinkuaicha.com) · [更新日志](CHANGELOG_USER.md) · [技术文档](docs/TECH.md) · [开发指南](docs/DEVELOPMENT.md)
 
@@ -39,6 +39,7 @@
 | 净值类型标注 | 区分「正式净值」（盘后公布）与「估算净值」（盘中实时），明确数据可靠程度 |
 | 场内份额监控 | 展示场内份额及新增份额变化，辅助判断资金流向 |
 | 申购限额筛选 | 支持按申购限额多选筛选，快速定位暂停申购或特定限额基金 |
+| 365天历史图表 | 支持七日/一月/三月/六月/一年切换，价格/净值/溢价率多指标体系 |
 
 ### 套利分析
 | 功能 | 说明 |
@@ -47,16 +48,18 @@
 | 预计收益额 | 结合投入金额上限与基金申购限额，计算实际预期收益 |
 | 费率明细拆解 | 溢价/折价套利各环节费用逐项展示，识别最低佣金门槛 |
 | 套利流程引导 | 内置溢价套利（申购→卖出）与折价套利（买入→赎回）全流程说明 |
+| 套利模拟回测 | 悬停图表任意日期，自动计算该日起点的预计收益，取收益更高者 |
 
 ### 体验设计
 | 功能 | 说明 |
 |------|------|
-| 暗色模式 | 手动切换，偏好自动持久化 |
+| 暗色模式 | 手动切换，偏好自动持久化，全局适配深色/浅色模式 |
 | 响应式布局 | PC 端表格式数据看板 + 移动端卡片式信息流 |
 | 多端支持 | Web 网页 + 移动端 H5，响应式设计自适应屏幕 |
-| 基金详情弹窗 | 12 项 KPI 指标 + 7 交易日价格/净值双线 Chart.js 图表 |
+| 基金详情弹窗 | 12 项 KPI 指标 + 历史走势图，点击排行榜可直接查看详情 |
 | 个性化筛选 | 自定义溢价率阈值、三日均溢阈值、成交额门槛、佣金参数 |
 | 申购限额筛选 | 下拉多选筛选（暂停申购/开放申购/具体限额），一键清空 |
+| 智能缓存 | 热门基金图表预渲染，打开即显无需等待；数据源熔断降级保障可用性 |
 
 ---
 
@@ -115,11 +118,11 @@ lof-premium-tracker/
 
 | 层级 | 平台 | 技术栈 | 职责 |
 |------|------|--------|------|
-| 前端 | Cloudflare Pages | HTML5 + CSS3 + Vanilla JS + Chart.js | 页面渲染、数据可视化、用户交互 |
+| 前端 | Cloudflare Pages / 本地 Flask | HTML5 + CSS3 + Vanilla JS + Chart.js | 页面渲染、数据可视化、用户交互 |
 | 代理 | Cloudflare Functions | JavaScript (Service Worker) | 同源 API 代理，解决跨境网络访问 |
-| 后端 | Railway | Python Flask + Gunicorn | 数据聚合、缓存、API 服务 |
-| 数据库 | Railway PostgreSQL | PostgreSQL | 历史净值/价格快照，21 天滚动保留 |
-| 数据源(主) | AKShare | akshare Python 库 | 全量 LOF 行情、日K线、历史净值 |
+| 后端 | Railway / 本地 Flask | Python Flask + Gunicorn + APScheduler | 数据聚合、缓存、API 服务、定时任务 |
+| 数据库 | Railway PostgreSQL | PostgreSQL | 历史净值/价格快照（365天）、场内份额数据 |
+| 数据源(主) | AKShare | akshare Python 库 | 全量 LOF 行情、日K线、历史净值、份额数据 |
 | 数据源(备) | 东方财富 / 腾讯 / 天天基金 | push2delay / qt / fundgz / lsjz | 主源故障时整体降级，NAV 缺失时逐基金补缺 |
 
 ### 分级数据源策略
@@ -204,15 +207,33 @@ git push origin main
 
 完整的 API 文档和参数说明请参考 **[技术文档](docs/TECH.md)** 中的 API 接口章节。
 
+### 核心数据接口
+
 | 方法 | 路径 | 参数 | 说明 |
 |------|------|------|------|
 | `GET` | `/api/funds` | `page`, `page_size`, `sort`, `order`, `keyword`, `min_premium`, `min_amount`, `purchase_limit` | 全量基金列表（分页 + 排序 + 搜索 + 多条件筛选 + 申购限额筛选） |
 | `GET` | `/api/purchase-limits` | — | 获取所有申购限额选项（用于前端下拉多选） |
 | `GET` | `/api/funds/<code>` | — | 单只基金详情（含申购/赎回费率、场内份额、新增份额） |
-| `GET` | `/api/funds/<code>/chart` | — | 近 7 交易日价格/净值双线曲线数据 |
-| `GET` | `/health` | — | 服务健康检查（缓存状态、最后更新时间） |
-| `POST` | `/refresh` | — | 手动触发全量数据刷新 |
-| `POST` | `/init-history` | — | 手动补填历史快照数据 |
+| `GET` | `/api/funds/<code>/chart` | `days` (7/30/365) | 历史价格/净值曲线数据 |
+| `GET` | `/api/rankings` | `type` (premium/discount), `limit` | 溢价率/折价率排行榜 |
+
+### 历史数据接口
+
+| 方法 | 路径 | 参数 | 说明 |
+|------|------|------|------|
+| `GET` | `/api/history` | `code` (可选), `days` (1-21) | 历史溢价率数据 |
+| `GET` | `/api/shares` | `code` (可选), `days` (1-90) | 场内份额数据 |
+
+### 系统管理接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/health` | 服务健康检查（缓存状态、最后更新时间、历史数据天数） |
+| `POST` | `/refresh` | 手动触发数据刷新（仅返回当前缓存） |
+| `POST` | `/init-history` | 手动补填历史溢价数据（1-21天） |
+| `POST` | `/init-kline-history` | 手动补填K线历史数据（365天，任务队列调度） |
+| `POST` | `/api/shares/fetch` | 立即触发份额数据抓取 |
+| `GET` | `/api/tasks` | 查看后台任务状态 |
 
 ---
 
@@ -220,11 +241,12 @@ git push origin main
 
 | 数据类型 | 更新频率 | 触发方式 |
 |----------|----------|----------|
-| 场内实时价格 / 净值 / 溢价率 | 每 5 分钟 | 用户访问时懒更新 |
-| 场内份额 / 新增份额 | 每日 | T-1 日数据，非交易日自动跳过 |
+| 场内实时价格 / 净值 / 溢价率 | 每 5 分钟 | 懒更新机制（用户访问时自动检测并刷新） |
+| 场内份额 / 新增份额 | 每日 07:00 | APScheduler 定时任务，T-1 日数据，非交易日自动跳过 |
 | 基金申购/赎回费率 | 按需 | 首次查看某基金时抓取并缓存 |
 | 深市 LOF 代码列表 | 每周 | 自动扫描 push2delay 全表 |
 | 历史 K 线 / 历史净值 | 每日 | 懒更新时自动保存当日快照 |
+| 热门基金图表缓存 | 每 5 分钟 | 预渲染 Top5 溢价 + Top5 折价基金（7d/30d/365d） |
 | 历史数据保留期 | 365 天 | 超期数据自动清理 |
 
 📊 **数据源策略详解**请查看 [技术文档](docs/TECH.md) 中的数据源适配章节。
