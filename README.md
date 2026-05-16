@@ -17,9 +17,11 @@
 
 ---
 
-## 这是什么？
+## 关于本项目
 
-金快查是一款专注 **LOF 基金折溢价监控** 的开源工具，面向个人投资者与量化爱好者，提供全市场 LOF 基金的 **实时溢价率、折价率、成交额、预计套利收益** 等核心指标。支持 PC 网页和移动端 H5 两种访问方式，覆盖 **LOF 套利全流程** 从数据发现到收益测算。
+金快查是一款专注 **LOF 基金折溢价监控** 的开源工具，面向个人投资者与量化爱好者。
+
+本项目基于 [MistyBridge/lof-premium-tracker](https://github.com/MistyBridge/lof-premium-tracker) 进行协作开发，在原有功能基础上新增了场内份额追踪、申购限额筛选、365天历史图表等核心功能。
 
 > **LOF 基金**（Listed Open-Ended Fund，上市型开放式基金）同时存在场内交易价格和场外基金净值，二者偏差即为折溢价。当溢价率足够覆盖交易成本时，投资者可通过 **申购→卖出** 或 **买入→赎回** 进行套利操作。
 
@@ -299,6 +301,19 @@ git push origin main
 - 📘 **[环境配置 (ENV_SETUP.md)](ENV_SETUP.md)** — 环境变量设置、PostgreSQL 配置、常见问题
 - 📝 **[更新日志 (CHANGELOG_USER.md)](CHANGELOG_USER.md)** — 用户友好的版本更新说明
 - 📝 **[技术更新日志 (CHANGELOG.md)](CHANGELOG.md)** — 详细的技术变更对比
+
+---
+
+## 贡献者
+
+感谢以下开发者对本项目的贡献：
+
+| 贡献者 | GitHub | 主要贡献 |
+|--------|--------|----------|
+| MistyBridge | [@MistyBridge](https://github.com/MistyBridge) | 项目创始人，核心架构设计，LOF 实时监控引擎 |
+| danwangshi | [@danwangshi](https://github.com/danwangshi) | 场内份额数据集成，申购限额筛选，历史图表扩展，定时任务系统 |
+
+欢迎更多开发者参与贡献！详见 [开发指南](docs/DEVELOPMENT.md)。
 
 ---
 
