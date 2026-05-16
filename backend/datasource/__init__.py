@@ -12,7 +12,7 @@ __all__ = [
     "LOFDataSource",
     "LegacySource",
     "AkShareSource",
-    "ExchangeShareSource",
+    "ExchangeShareSource",  # 注意：这不是 LOFDataSource 子类，是独立的份额数据源
     "DataSourceManager",
     "get_datasource_manager",
 ]

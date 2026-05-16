@@ -15,9 +15,10 @@ except Exception:
 
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from apscheduler.schedulers.background import BackgroundScheduler
 
 from config import Config
 from data_fetcher import get_fetcher
@@ -95,6 +96,15 @@ def _fmt(fund: dict, detail: bool = False) -> dict:
     nav = fund.get("nav")
     price = float(fund.get("price", 0) or 0)
     change_pct = float(fund.get("change_pct", 0) or 0)
+    
+    # 在 _fmt 内部计算 shares_incr，确保一定返回
+    shares_incr_val = fund.get("shares_incr")
+    if shares_incr_val is None:
+        shares_incr_val = 0  # 强制默认为 0，防止被 JSON 过滤
+    if fund.get("code") == "160644":
+        import sys
+        print(f"DEBUG: fund keys = {list(fund.keys())}", file=sys.stderr)
+        print(f"DEBUG: shares_incr_val = {shares_incr_val}", file=sys.stderr)
 
     result = {
         # ── 基础信息 ──
@@ -125,15 +135,22 @@ def _fmt(fund: dict, detail: bool = False) -> dict:
         "shares": fund.get("shares"),               # 场内份额（股）
         "shares_date": fund.get("shares_date"),     # 份额日期
         "shares_source": fund.get("shares_source"), # 份额数据来源（SSE/SZSE）
+        "shares_incr": shares_incr_val,     # 新增份额（股）
         # ── 推导字段 ──
         "change_amount": round(change_pct / 100 * price, 4) if (price and price > 0) else None,
     }
+    
+    # 调试：如果 code 是 160644，打印整个 result
+    if fund.get("code") == "160644":
+        print(f"DEBUG _fmt: shares_incr value = {result.get('shares_incr')}")
 
     if detail:
+        volume = fund.get("volume") or 0
+        amount = fund.get("amount") or 0
         result.update({
             "prev_nav": fund.get("prev_nav"),        # 昨日净值
-            "volume_w": round(fund.get("volume", 0) / 10000, 2),  # 成交量（万手）
-            "amount_w": round(fund.get("amount", 0) / 10000, 2),   # 成交额（万元）
+            "volume_w": round(volume / 10000, 2),    # 成交量（万手）
+            "amount_w": round(amount / 10000, 2),    # 成交额（万元）
         })
 
     return result
@@ -310,20 +327,95 @@ def list_funds():
         all_data = {k: v for k, v in all_data.items()
                     if (v.get("premium_rate") or 0) < 0}
 
-    # ── 停牌 & 申购状态筛选 ──
+    # ── 停牌筛选 ──
     show_suspended = request.args.get("suspended", "0")
-    show_unpurchasable = request.args.get("unpurchasable", "0")
     if show_suspended != "1":
         all_data = {k: v for k, v in all_data.items()
                     if not _is_suspended(v)}
-    if show_unpurchasable != "1":
-        # 过滤掉暂停申购的基金（can_purchase=False）
-        # can_purchase=None 表示未知状态，保留显示
-        all_data = {k: v for k, v in all_data.items()
-                    if v.get("can_purchase") is not False}
+
+    # ── 申购限额筛选（支持多选） ──
+    purchase_limits = request.args.getlist("purchase_limit")
+    if purchase_limits:
+        # 分离特殊选项和数值选项
+        special_filters = [p for p in purchase_limits if p in ['suspended', 'unlimited']]
+        numeric_limits = [float(p) for p in purchase_limits if p not in ['suspended', 'unlimited']]
+        
+        def matches_filter(fund):
+            can_purchase = fund.get("can_purchase")
+            limit = fund.get("purchase_limit")
+            
+            # 检查是否匹配特殊选项
+            if 'suspended' in special_filters and can_purchase is False:
+                return True
+            if 'unlimited' in special_filters and can_purchase is not False and limit is None:
+                return True
+            
+            # 检查是否匹配数值选项
+            if numeric_limits and limit in numeric_limits:
+                return True
+            
+            return False
+        
+        all_data = {k: v for k, v in all_data.items() if matches_filter(v)}
 
     # ── 排序 ──
     items = list(all_data.values())
+    
+    # ── 补充份额数据并计算增量 ──
+    hdb = get_history_db()
+    shares_map = hdb.get_all_latest_shares()
+    
+    logger.info(f"[DEBUG] Total items before processing: {len(items)}")
+    
+    for item in items:
+        code = item.get("code")
+        if not code: continue
+        
+        if code == '160644':
+            logger.info(f"[DEBUG] Processing 160644, current shares={item.get('shares')}")
+            
+        # 1. 如果缓存中没有份额，从数据库补全
+        if item.get("shares") is None and code in shares_map:
+            share_info = shares_map[code]
+            item["shares"] = share_info.get("shares")
+            item["shares_date"] = share_info.get("date")
+            item["shares_source"] = share_info.get("source")
+        
+        # 2. 统一计算新增份额（对比上一个不同日期的数据）
+        try:
+            # 获取最近 7 天的数据，确保能找到两个不同日期的记录
+            prev_shares_info = hdb.get_shares_by_code(code, days=7)
+            if len(prev_shares_info) >= 2:
+                latest = prev_shares_info[0]
+                # 找到第一个与最新日期不同的记录
+                previous = None
+                for record in prev_shares_info[1:]:
+                    if record.get('date') != latest.get('date'):
+                        previous = record
+                        break
+                
+                if previous:
+                    s1 = latest.get('shares', 0)
+                    s2 = previous.get('shares', 0)
+                    today_share = float(s1) if s1 is not None else 0.0
+                    yesterday_share = float(s2) if s2 is not None else 0.0
+                    incr_val = round(today_share - yesterday_share, 2)
+                    item["shares_incr"] = incr_val
+                    if code == '160644':
+                        logger.info(f"[DEBUG] {code}: Latest={latest['date']}({today_share}), Previous={previous['date']}({yesterday_share}), Incr={incr_val}")
+                else:
+                    item["shares_incr"] = 0
+                    if code == '160644':
+                        logger.info(f"[DEBUG] {code}: No different date found")
+            else:
+                item["shares_incr"] = 0
+                if code == '160644':
+                    logger.info(f"[DEBUG] {code}: Not enough history (count={len(prev_shares_info)})")
+        except Exception as e:
+            item["shares_incr"] = 0
+            if code == '160644':
+                logger.error(f"[DEBUG] {code}: Exception: {e}")
+    
     if sort_field == "premium_rate":
         items.sort(key=lambda x: x.get("premium_rate") if x.get("premium_rate") is not None else -9999.0, reverse=reverse)
     elif sort_field == "change_pct":
@@ -341,6 +433,14 @@ def list_funds():
 
     total = len(items)
     start = (page - 1) * page_size
+    
+    # 调试：打印第一个基金的 shares_incr
+    if items:
+        first_fund = items[0]
+        logger.info(f"DEBUG: Before _fmt, code={first_fund.get('code')}, shares_incr={first_fund.get('shares_incr')}")
+        formatted = _fmt(first_fund)
+        logger.info(f"DEBUG: After _fmt, shares_incr in result={'shares_incr' in formatted}, value={formatted.get('shares_incr')}")
+    
     page_items = [_fmt(f) for f in items[start: start + page_size]]
 
     return ok(
@@ -354,6 +454,48 @@ def list_funds():
             "data_source": "东方财富 + 天天基金网",
         }
     )
+
+
+@app.route("/api/purchase-limits", methods=["GET"])
+def get_purchase_limits():
+    """获取所有申购限额选项（用于下拉多选）"""
+    f = get_fetcher()
+    all_data = f.get_all()
+    
+    # 收集所有不同的申购限额值
+    limits_set = set()
+    has_suspended = False
+    has_unlimited = False
+    
+    for fund in all_data.values():
+        can_purchase = fund.get("can_purchase")
+        limit = fund.get("purchase_limit")
+        
+        # 检查是否有暂停申购的基金
+        if can_purchase is False:
+            has_suspended = True
+        # 检查是否有开放申购（无限额）的基金
+        elif can_purchase is not False and limit is None:
+            has_unlimited = True
+        # 只有可申购且有具体限额的基金，才收集限额值
+        elif can_purchase is not False and limit is not None:
+            limits_set.add(limit)
+    
+    # 转换为列表并排序
+    limits_list = sorted(list(limits_set))
+    
+    # 添加特殊选项：暂停申购和开放申购
+    special_options = []
+    if has_suspended:
+        special_options.append({"value": "suspended", "label": "暂停申购"})
+    if has_unlimited:
+        special_options.append({"value": "unlimited", "label": "开放申购"})
+    
+    return ok({
+        "limits": limits_list,
+        "special_options": special_options,
+        "count": len(limits_list) + len(special_options)
+    })
 
 
 @app.route("/api/debug/cache/<code>", methods=["GET"])
@@ -740,6 +882,37 @@ def _startup_init():
 # 启动后台初始化线程（gunicorn导入模块时自动触发）
 _init_thread = threading.Thread(target=_startup_init, daemon=True)
 _init_thread.start()
+
+# ══════════════════════════════════════════════════════════════════
+# 定时任务：每天早上7点自动抓取份额数据
+# ══════════════════════════════════════════════════════════════════
+
+def _scheduled_fetch_shares():
+    """定时任务：自动抓取前一天的份额数据"""
+    try:
+        logger.info("⏰ 定时任务触发：开始抓取份额数据")
+        from auto_fetch_shares import fetch_and_save_shares
+        success = fetch_and_save_shares()
+        if success:
+            logger.info("✅ 定时任务：份额数据抓取成功")
+        else:
+            logger.info("ℹ️  定时任务：非交易日，跳过保存")
+    except Exception as e:
+        logger.error(f"❌ 定时任务：份额数据抓取失败: {e}")
+
+# 初始化定时任务调度器
+scheduler = BackgroundScheduler(timezone='Asia/Shanghai')
+scheduler.add_job(
+    func=_scheduled_fetch_shares,
+    trigger='cron',
+    hour=7,
+    minute=0,
+    id='daily_shares_fetch',
+    name='每日份额数据抓取',
+    replace_existing=True
+)
+scheduler.start()
+logger.info("⏰ 定时任务已启动：每天 07:00 自动抓取份额数据")
 
 
 # K线数据播种已改为手动触发: POST /init-kline-history

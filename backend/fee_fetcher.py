@@ -49,7 +49,9 @@ def _parse_purchase_limit_from_html(html: str) -> Optional[float]:
     Returns: float (amount in 元) or None.
     "无限额" → None (no limit)
     "10.00元" → 10.0
-    "100.00元" → 100.0
+    "10.00万元" → 100000.0
+    "100.00万元" → 1000000.0
+    "1.00亿元" → 100000000.0
     """
     idx = html.find("日累计申购限额")
     if idx < 0:
@@ -61,11 +63,19 @@ def _parse_purchase_limit_from_html(html: str) -> Optional[float]:
     val = re.sub(r'<[^>]+>', '', m.group(1)).strip()
     if not val or '无限额' in val or '---' in val:
         return None  # no limit
-    # Extract number
-    nm = re.search(r'([\d,.]+)\s*元', val)
+    
+    # Extract number and unit
+    nm = re.search(r'([\d,.]+)\s*(元|万元|亿元)', val)
     if nm:
         try:
-            return float(nm.group(1).replace(',', ''))
+            amount = float(nm.group(1).replace(',', ''))
+            unit = nm.group(2)
+            # Convert to 元
+            if unit == '万元':
+                amount *= 10000
+            elif unit == '亿元':
+                amount *= 100000000
+            return amount
         except ValueError:
             return None
     return None

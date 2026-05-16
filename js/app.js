@@ -22,6 +22,7 @@ class LofFundMonitor {
         this.commissionRate = parseFloat(localStorage.getItem('lof_commissionRate')) || 1.5;  // 万X
         this.commissionMin = parseFloat(localStorage.getItem('lof_commissionMin')) || 5;      // 元
         this.maxCapital = parseFloat(localStorage.getItem('lof_maxCapital')) || 1000;        // 元
+        this.purchaseDiscount = parseFloat(localStorage.getItem('lof_purchaseDiscount')) || 0.1; // 申购费率折扣，默认一折
         // 深色模式（从 localStorage 恢复，默认浅色）
         this.darkMode = localStorage.getItem('lof_darkMode') || 'light';
         this.bindEvents();
@@ -46,6 +47,7 @@ class LofFundMonitor {
                     throw new Error('数据未就绪，后端正在初始化中，请稍后重试');
                 }
                 await this.loadRankings();
+                await this.loadPurchaseLimits();  // 加载申购限额选项
                 await this.loadFunds();
                 this.startAutoRefresh();
                 this.showError(false);
@@ -89,21 +91,87 @@ class LofFundMonitor {
         }
     }
 
+    async loadPurchaseLimits() {
+        try {
+            const response = await fetch(`${api.baseUrl}/api/purchase-limits`);
+            const result = await response.json();
+            if (result.code === 0) {
+                this.populatePurchaseLimitFilter(result.data.limits, result.data.special_options || []);
+            }
+        } catch (error) {
+            console.warn('申购限额选项加载失败:', error.message);
+        }
+    }
+
+    populatePurchaseLimitFilter(limits, specialOptions = []) {
+        const select = document.getElementById('purchaseLimitFilter');
+        if (!select) return;
+        
+        // 清空现有选项（保留第一个）
+        while (select.options.length > 1) {
+            select.remove(1);
+        }
+        
+        // 先添加特殊选项
+        if (specialOptions && specialOptions.length > 0) {
+            specialOptions.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.label;
+                select.appendChild(option);
+            });
+        }
+        
+        // 再添加数值选项
+        limits.forEach(limit => {
+            const option = document.createElement('option');
+            option.value = limit;
+            
+            // 格式化显示文本
+            let text;
+            if (limit >= 100000000) {
+                text = `${(limit / 100000000).toFixed(2)}亿`;
+            } else if (limit >= 10000) {
+                text = `${(limit / 10000).toFixed(2)}万`;
+            } else {
+                text = `${limit.toFixed(2)}元`;
+            }
+            
+            option.textContent = text;
+            select.appendChild(option);
+        });
+    }
+
     async loadFunds() {
         this.isLoading = true;
         try {
-            const result = await api.getFunds(1, 600);
+            // 获取申购限额筛选参数
+            const limitSelect = document.getElementById('purchaseLimitFilter');
+            const selectedLimits = Array.from(limitSelect?.selectedOptions || [])
+                .map(opt => opt.value)
+                .filter(v => v !== '');
+            
+            // 构建 API URL
+            let url = `${api.baseUrl}/api/funds?page=1&page_size=600`;
+            if (selectedLimits.length > 0) {
+                selectedLimits.forEach(limit => {
+                    url += `&purchase_limit=${limit}`;
+                });
+            }
+            
+            const response = await fetch(url);
+            const result = await response.json();
+            
             // 记录服务端数据时间戳，用于刷新按钮时间对齐
             if (result.meta?.last_fetch) {
                 this._lastServerFetch = result.meta.last_fetch;
             }
             // 保存原始数据总数（过滤前）
             const totalFromApi = result.data.length;
-            // 过滤停牌、无溢价率、暂停申购的基金
+            // 过滤停牌、无溢价率的基金（不再过滤暂停申购）
             this.funds = result.data.filter(fund => {
                 if (fund.is_suspended) return false;
                 if (fund.premium_rate === null || fund.premium_rate === undefined) return false;
-                if (fund.can_purchase === false) return false;  // 暂停申购
                 return true;
             });
             this.applyFilters();
@@ -154,7 +222,14 @@ class LofFundMonitor {
         const isMinCommission = rawCommission < this.commissionMin;
 
         if (premium > 0) {
-            const purchaseFeeRate = fund.purchase_fee_rate ?? 0;
+            const basePurchaseFeeRate = fund.purchase_fee_rate ?? 0;
+            // 申购费率折扣：如果后端返回的已经是优惠后的费率（如 0.15），则不再乘以折扣
+            // 判断逻辑：如果基础费率 < 1%，通常认为是已经打过折的费率，直接使用该费率
+            // 否则（如 1.5%），则应用用户设置的折扣率
+            let purchaseFeeRate = basePurchaseFeeRate;
+            if (basePurchaseFeeRate >= 1.0) {
+                purchaseFeeRate = basePurchaseFeeRate * this.purchaseDiscount;
+            }
             const purchaseFeeAmount = capital * purchaseFeeRate / 100;
             const sellCommissionRate = actualCommissionRate;
             const sellCommissionAmount = actualCommission;
@@ -349,7 +424,13 @@ class LofFundMonitor {
         const changeText = fund.change_pct !== null && fund.change_pct !== undefined ? changeSign + fund.change_pct.toFixed(2) + '%' : '--';
 
         const navType = fund.is_formal_nav ? '正式' : '估算';
-        const navText = fund.nav !== null && fund.nav !== undefined ? fund.nav.toFixed(3) : '--';
+        let navText = fund.nav !== null && fund.nav !== undefined ? fund.nav.toFixed(3) : '--';
+        // 将净值时间显示在净值下方
+        if (fund.nav_date) {
+            // 提取日期部分，格式：2026-05-16
+            const datePart = fund.nav_date.split(' ')[0];
+            navText += `<div class="nav-date">${datePart}</div>`;
+        }
         const priceText = fund.price !== null && fund.price !== undefined ? fund.price.toFixed(3) : '--';
 
         let amountText = '--';
@@ -359,57 +440,92 @@ class LofFundMonitor {
         }
 
         const estProfit = this.calcEstimatedProfit(fund);
-        let estProfitRateText = '--';
-        let estProfitRateClass = 'premium-zero';
-        let estProfitAmountText = '--';
-        let estProfitAmountClass = 'premium-zero';
+        let estProfitText = '--';
+        let estProfitClass = 'premium-zero';
         let estProfitInfoBtn = '';
         if (estProfit) {
-            const sign = estProfit.rate > 0 ? '+' : '';
-            estProfitRateText = sign + estProfit.rate.toFixed(2) + '%';
-            estProfitRateClass = estProfit.rate > 0 ? 'premium-positive' : estProfit.rate < 0 ? 'premium-negative' : 'premium-zero';
+            // 收益额
+            let amountText;
             if (estProfit.amount >= 10000) {
-                estProfitAmountText = (estProfit.amount / 10000).toFixed(2) + '万';
+                amountText = (estProfit.amount / 10000).toFixed(2) + '万';
             } else {
-                estProfitAmountText = estProfit.amount.toFixed(2) + '元';
+                amountText = estProfit.amount.toFixed(2) + '元';
             }
             const amtSign = estProfit.amount > 0 ? '+' : '';
-            estProfitAmountText = amtSign + estProfitAmountText;
-            estProfitAmountClass = estProfit.amount > 0 ? 'premium-positive' : estProfit.amount < 0 ? 'premium-negative' : 'premium-zero';
+            amountText = amtSign + amountText;
+            
+            // 收益率
+            const sign = estProfit.rate > 0 ? '+' : '';
+            const rateText = sign + estProfit.rate.toFixed(2) + '%';
+            
+            // 合并显示：收益额在上，收益率在下
+            estProfitText = `<div class="est-profit-amount">${amountText}</div><div class="est-profit-rate">${rateText}</div>`;
+            estProfitClass = estProfit.amount > 0 ? 'premium-positive' : estProfit.amount < 0 ? 'premium-negative' : 'premium-zero';
             estProfitInfoBtn = `<button class="btn-profit-info" data-code="${fund.code}" title="查看收益构成">?</button>`;
         }
 
-        // 场内份额数据
+        // 场内份额数据（单位：万份）
         let sharesText = '-';
         let sharesDateText = '';
         if (fund.shares !== null && fund.shares !== undefined) {
-            // 转换为万份显示
-            const sharesWan = fund.shares / 10000;
-            sharesText = sharesWan >= 10000 ? (sharesWan / 10000).toFixed(2) + '亿' : sharesWan.toFixed(2) + '万';
-            if (fund.shares_date) {
-                sharesDateText = `<div class="shares-date">${fund.shares_date}</div>`;
+            // 直接显示数值，不添加单位（确保转换为数字）
+            const sharesNum = parseFloat(fund.shares);
+            if (!isNaN(sharesNum)) {
+                sharesText = sharesNum.toFixed(2);
+                if (fund.shares_date) {
+                    sharesDateText = `<div class="shares-date">${fund.shares_date}</div>`;
+                }
             }
+        }
+
+        // 新增份额（当前份额 - 昨日份额），单位：万份
+        let sharesIncrText = '-';
+        let sharesIncrClass = 'premium-zero';
+        if (fund.shares_incr !== null && fund.shares_incr !== undefined) {
+            const incr = parseFloat(fund.shares_incr);  // 单位：万份，确保转换为数字
+            if (!isNaN(incr)) {
+                // 直接显示数值，保留两位小数
+                sharesIncrText = incr.toFixed(2);
+                sharesIncrClass = incr > 0 ? 'premium-positive' : incr < 0 ? 'premium-negative' : 'premium-zero';
+            }
+        }
+        
+        // 申购限额
+        let purchaseLimitText = '-';
+        if (fund.can_purchase === false) {
+            // 暂停申购
+            purchaseLimitText = '暂停申购';
+        } else if (fund.purchase_limit !== null && fund.purchase_limit !== undefined) {
+            const limit = fund.purchase_limit;
+            if (limit >= 100000000) {
+                purchaseLimitText = (limit / 100000000).toFixed(2) + '亿';
+            } else if (limit >= 10000) {
+                purchaseLimitText = (limit / 10000).toFixed(2) + '万';
+            } else {
+                purchaseLimitText = limit.toFixed(2) + '元';
+            }
+        } else {
+            purchaseLimitText = '开放申购';
         }
 
         return `<tr class="fund-row" data-code="${fund.code}">
             <td class="col-code">${fund.code}</td>
             <td class="col-name" title="${fund.name}">${this.truncateName(fund.name)}</td>
             <td class="col-price">${priceText}</td>
-            <td class="col-nav">${navText}${fund.nav ? '<span class="nav-badge">' + navType + '</span>' : ''}</td>
+            <td class="col-nav">${navText}</td>
             <td class="col-change ${changeClass}">${changeText}</td>
             <td class="col-premium ${premiumClass}">${premiumText}</td>
             <td class="col-avg-premium ${avgPremiumClass}">${avgPremiumText}</td>
-            <td class="col-amount">${amountText}</td>
-            <td class="col-est-profit-rate ${estProfitRateClass}">${estProfitRateText}${estProfitInfoBtn}</td>
-            <td class="col-est-profit-amount ${estProfitAmountClass}">${estProfitAmountText}${estProfitInfoBtn}</td>
             <td class="col-shares">
                 <div class="shares-cell">
                     <div class="shares-amount">${sharesText}</div>
                     ${sharesDateText}
                 </div>
             </td>
-            <td class="col-status"><span class="status-badge ${fund.premium_status || ''}">${fund.premium_status || '未知'}</span></td>
-            <td class="col-time">${fund.nav_date || '-'}</td>
+            <td class="col-shares-incr ${sharesIncrClass}">${sharesIncrText}</td>
+            <td class="col-amount">${amountText}</td>
+            <td class="col-est-profit ${estProfitClass}">${estProfitText}${estProfitInfoBtn}</td>
+            <td class="col-purchase-limit">${purchaseLimitText}</td>
         </tr>`;
     }
 
@@ -417,7 +533,7 @@ class LofFundMonitor {
         const container = document.getElementById('rankingsContainer');
         if (container) {
             container.innerHTML = funds.slice(0, 5).map((fund, index) => `
-                <div class="ranking-item">
+                <div class="ranking-item" data-code="${fund.code}" style="cursor: pointer;">
                     <span class="rank-num rank-${index + 1}">${index + 1}</span>
                     <div class="rank-card">
                         <span class="rank-code">${fund.code}</span>
@@ -425,15 +541,31 @@ class LofFundMonitor {
                     </div>
                 </div>
             `).join('');
+            
+            // 添加点击事件
+            container.querySelectorAll('.ranking-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const code = item.dataset.code;
+                    if (code) this.showFundDetail(code);
+                });
+            });
         }
         const mobileScroll = document.getElementById('mobileRankingScroll');
         if (mobileScroll) {
             mobileScroll.innerHTML = funds.slice(0, 10).map(fund => `
-                <div class="strip-item">
+                <div class="strip-item" data-code="${fund.code}" style="cursor: pointer;">
                     <span class="si-code">${fund.code}</span>
                     <span class="si-rate">${fund.premium_rate != null ? '+' + fund.premium_rate.toFixed(2) + '%' : '--'}</span>
                 </div>
             `).join('');
+            
+            // 添加点击事件
+            mobileScroll.querySelectorAll('.strip-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const code = item.dataset.code;
+                    if (code) this.showFundDetail(code);
+                });
+            });
         }
     }
 
@@ -443,7 +575,7 @@ class LofFundMonitor {
         const discountContainer = document.getElementById('discountContainer');
         if (discountContainer) {
             discountContainer.innerHTML = sorted.slice(0, 5).map((fund, index) => `
-                <div class="ranking-item">
+                <div class="ranking-item" data-code="${fund.code}" style="cursor: pointer;">
                     <span class="rank-num rank-${index + 1}">${index + 1}</span>
                     <div class="rank-card">
                         <span class="rank-code">${fund.code}</span>
@@ -451,15 +583,31 @@ class LofFundMonitor {
                     </div>
                 </div>
             `).join('');
+            
+            // 添加点击事件
+            discountContainer.querySelectorAll('.ranking-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const code = item.dataset.code;
+                    if (code) this.showFundDetail(code);
+                });
+            });
         }
         const mobileDiscountScroll = document.getElementById('mobileDiscountScroll');
         if (mobileDiscountScroll) {
             mobileDiscountScroll.innerHTML = sorted.slice(0, 10).map(fund => `
-                <div class="strip-item">
+                <div class="strip-item" data-code="${fund.code}" style="cursor: pointer;">
                     <span class="si-code">${fund.code}</span>
                     <span class="si-rate">${fund.premium_rate != null ? fund.premium_rate.toFixed(2) + '%' : '--'}</span>
                 </div>
             `).join('');
+            
+            // 添加点击事件
+            mobileDiscountScroll.querySelectorAll('.strip-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const code = item.dataset.code;
+                    if (code) this.showFundDetail(code);
+                });
+            });
         }
     }
 
@@ -478,11 +626,29 @@ class LofFundMonitor {
             profitText = profit1000 > 0 ? '+' + profit1000.toFixed(2) : profit1000.toFixed(2);
             profitClass = profit1000 > 0 ? 'mc-pos' : profit1000 < 0 ? 'mc-neg' : '';
         }
-        // 场内份额
+        // 新增份额
         let sharesText = '-';
-        if (fund.shares !== null && fund.shares !== undefined) {
-            const sharesWan = fund.shares / 10000;
-            sharesText = sharesWan >= 10000 ? (sharesWan / 10000).toFixed(2) + '亿' : sharesWan.toFixed(2) + '万';
+        let sharesClass = '';
+        if (fund.shares_incr !== null && fund.shares_incr !== undefined) {
+            const incr = parseFloat(fund.shares_incr);
+            if (!isNaN(incr)) {
+                sharesText = `新增份额${incr.toFixed(2)}万`;
+                sharesClass = incr > 0 ? 'mc-pos' : incr < 0 ? 'mc-neg' : '';
+            }
+        }
+        // 申购限额
+        let purchaseLimitText = '开放申购';
+        if (fund.can_purchase === false) {
+            purchaseLimitText = '暂停申购';
+        } else if (fund.purchase_limit !== null && fund.purchase_limit !== undefined) {
+            const limit = fund.purchase_limit;
+            if (limit >= 100000000) {
+                purchaseLimitText = (limit / 100000000).toFixed(2) + '亿';
+            } else if (limit >= 10000) {
+                purchaseLimitText = (limit / 10000).toFixed(2) + '万';
+            } else {
+                purchaseLimitText = limit.toFixed(2) + '元';
+            }
         }
         return `<div class="mobile-card" data-code="${fund.code}">
             <div class="mc-top-row">
@@ -499,8 +665,11 @@ class LofFundMonitor {
                 <button class="mc-profit-help" data-code="${fund.code}" title="查看计算详情">?</button>
             </div>
             <div class="mc-shares-row">
-                <span class="mc-shares-label">场内份额</span>
-                <span class="mc-shares-val">${sharesText}</span>
+                <span class="mc-shares-val ${sharesClass}">${sharesText}</span>
+            </div>
+            <div class="mc-shares-row">
+                <span class="mc-shares-label">申购限额</span>
+                <span class="mc-shares-val">${purchaseLimitText}</span>
             </div>
         </div>`;
     }
@@ -515,6 +684,30 @@ class LofFundMonitor {
         });
         const searchInput = document.getElementById('searchInput');
         if (searchInput) searchInput.addEventListener('input', e => this.handleSearch(e.target.value));
+        
+        // 申购限额筛选
+        const limitFilter = document.getElementById('purchaseLimitFilter');
+        if (limitFilter) {
+            limitFilter.addEventListener('change', () => {
+                this.loadFunds();  // 重新加载基金列表
+            });
+        }
+        
+        // 清空筛选按钮
+        const clearFilterBtn = document.getElementById('clearFilterBtn');
+        if (clearFilterBtn) {
+            clearFilterBtn.addEventListener('click', () => {
+                if (limitFilter) {
+                    // 取消所有选中项
+                    Array.from(limitFilter.options).forEach(opt => {
+                        opt.selected = false;
+                    });
+                    // 重新加载基金列表（显示全部）
+                    this.loadFunds();
+                }
+            });
+        }
+        
         const retryBtn = document.getElementById('retryBtn');
         if (retryBtn) retryBtn.addEventListener('click', () => this.init());
         const manualRefreshBtn = document.getElementById('manualRefreshBtn');
@@ -680,12 +873,14 @@ class LofFundMonitor {
         const commissionRateInput = document.getElementById('commissionRateInput');
         const commissionMinInput = document.getElementById('commissionMinInput');
         const maxCapitalInput = document.getElementById('maxCapitalInput');
+        const purchaseDiscountInput = document.getElementById('purchaseDiscountInput');
         if (thresholdInput) thresholdInput.value = this.threshold || 0;
         if (avgThresholdInput) avgThresholdInput.value = this.avgThreshold || 0;
         if (minAmountInput) minAmountInput.value = this.minAmount || 0;
         if (commissionRateInput) commissionRateInput.value = this.commissionRate;
         if (commissionMinInput) commissionMinInput.value = this.commissionMin;
         if (maxCapitalInput) maxCapitalInput.value = this.maxCapital;
+        if (purchaseDiscountInput) purchaseDiscountInput.value = this.purchaseDiscount;
         if (modal) modal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
     }
@@ -703,12 +898,14 @@ class LofFundMonitor {
         const commissionRateInput = document.getElementById('commissionRateInput');
         const commissionMinInput = document.getElementById('commissionMinInput');
         const maxCapitalInput = document.getElementById('maxCapitalInput');
+        const purchaseDiscountInput = document.getElementById('purchaseDiscountInput');
         this.threshold = parseFloat(thresholdInput?.value) || 0;
         this.avgThreshold = parseFloat(avgThresholdInput?.value) || 0;
         this.minAmount = parseFloat(minAmountInput?.value) || 0;
         this.commissionRate = parseFloat(commissionRateInput?.value) || 1.5;
         this.commissionMin = parseFloat(commissionMinInput?.value) || 5;
         this.maxCapital = parseFloat(maxCapitalInput?.value) || 1000;
+        this.purchaseDiscount = parseFloat(purchaseDiscountInput?.value) || 0.1;
         // 保存所有设置到 localStorage（扩展记忆功能）
         localStorage.setItem('lof_threshold', this.threshold);
         localStorage.setItem('lof_avgThreshold', this.avgThreshold);
@@ -716,6 +913,7 @@ class LofFundMonitor {
         localStorage.setItem('lof_commissionRate', this.commissionRate);
         localStorage.setItem('lof_commissionMin', this.commissionMin);
         localStorage.setItem('lof_maxCapital', this.maxCapital);
+        localStorage.setItem('lof_purchaseDiscount', this.purchaseDiscount);
         this.currentPage = 1;
         this.applyFilters();
         this.renderTable();
@@ -725,7 +923,7 @@ class LofFundMonitor {
         if (this.threshold > 0) parts.push(`溢价率≥${this.threshold}%`);
         if (this.avgThreshold > 0) parts.push(`三日均溢≥${this.avgThreshold}%`);
         if (this.minAmount > 0) parts.push(`成交额≥${this.minAmount}万`);
-        parts.push(`佣金万${this.commissionRate} 最低${this.commissionMin}元 最大投入${this.maxCapital}元`);
+        parts.push(`佣金万${this.commissionRate} 最低${this.commissionMin}元 最大投入${this.maxCapital}元 申购折扣${(this.purchaseDiscount * 10).toFixed(0)}折`);
         this.showToast(parts.length ? '设置已应用：' + parts.join('，') : '设置已重置');
     }
 
@@ -736,12 +934,14 @@ class LofFundMonitor {
         const commissionRateInput = document.getElementById('commissionRateInput');
         const commissionMinInput = document.getElementById('commissionMinInput');
         const maxCapitalInput = document.getElementById('maxCapitalInput');
+        const purchaseDiscountInput = document.getElementById('purchaseDiscountInput');
         if (thresholdInput) thresholdInput.value = 0;
         if (avgThresholdInput) avgThresholdInput.value = 0;
         if (minAmountInput) minAmountInput.value = 0;
         if (commissionRateInput) commissionRateInput.value = 1.5;
         if (commissionMinInput) commissionMinInput.value = 5;
         if (maxCapitalInput) maxCapitalInput.value = 1000;
+        if (purchaseDiscountInput) purchaseDiscountInput.value = 0.1;
     }
 
     handleSort(field) {
@@ -1120,38 +1320,108 @@ class LofFundMonitor {
             amountText = aw >= 10000 ? (aw / 10000).toFixed(2) + '亿' : aw.toFixed(2) + '万';
         }
 
+        // 场内份额
+        let sharesText = '-';
+        if (fund.shares !== null && fund.shares !== undefined) {
+            const sharesNum = parseFloat(fund.shares);
+            if (!isNaN(sharesNum)) {
+                sharesText = sharesNum.toFixed(2);
+            }
+        }
+
+        // 新增份额
+        let sharesIncrText = '-';
+        if (fund.shares_incr !== null && fund.shares_incr !== undefined) {
+            const incr = parseFloat(fund.shares_incr);
+            if (!isNaN(incr)) {
+                sharesIncrText = incr.toFixed(2);
+            }
+        }
+
+        // 预计收益（合并收益率和收益额）
         const est = this.calcEstimatedProfit(fund);
+        let estProfitText = '--';
+        let estProfitCls = '';
+        if (est) {
+            // 收益额
+            let amountText;
+            if (est.amount >= 10000) {
+                amountText = (est.amount / 10000).toFixed(2) + '万';
+            } else {
+                amountText = est.amount.toFixed(2) + '元';
+            }
+            const amtSign = est.amount > 0 ? '+' : '';
+            amountText = amtSign + amountText;
+            
+            // 收益率
+            const sign = est.rate > 0 ? '+' : '';
+            const rateText = sign + est.rate.toFixed(2) + '%';
+            
+            // 合并显示：收益额在上，收益率在下
+            estProfitText = `<div style="font-size: 0.9rem; font-weight: 600;">${amountText}</div><div style="font-size: 0.75rem; opacity: 0.85;">${rateText}</div>`;
+            estProfitCls = est.amount > 0 ? 'fd-pos' : est.amount < 0 ? 'fd-neg' : '';
+        }
 
         setVal('fdCode', fund.code); isCopy('fdCode');
         setVal('fdName', fund.name); isCopy('fdName');
         setVal('fdPrice', fund.price != null ? fund.price.toFixed(3) : null);
-        setVal('fdNav', fund.nav != null ? fund.nav.toFixed(3) + ' (' + navType + ')' : null);
+        
+        // 净值：不显示"正式"/"估算"标签
+        setVal('fdNav', fund.nav != null ? fund.nav.toFixed(3) : null);
+        
+        // 净值日期
+        const navDateEl = document.getElementById('fdNavDate');
+        if (navDateEl && fund.nav_date) {
+            const datePart = fund.nav_date.split(' ')[0];
+            navDateEl.textContent = datePart;
+        }
+        
         setVal('fdChangePct', cp != null ? cpSign + cp.toFixed(2) + '%' : null, cpCls);
         setVal('fdPremiumRate', pr != null ? prSign + pr.toFixed(2) + '%' : null, prCls);
         setVal('fdAvgPremium', avg3d != null ? avgSign + avg3d.toFixed(2) + '%' : null, avgCls);
+        setVal('fdShares', sharesText);
+        
+        // 场内份额日期
+        const sharesDateEl = document.getElementById('fdSharesDate');
+        if (sharesDateEl && fund.shares_date) {
+            sharesDateEl.textContent = fund.shares_date;
+        }
+        
+        setVal('fdSharesIncr', sharesIncrText);
+        
+        // 新增份额日期（与场内份额相同）
+        const sharesIncrDateEl = document.getElementById('fdSharesIncrDate');
+        if (sharesIncrDateEl && fund.shares_date) {
+            sharesIncrDateEl.textContent = fund.shares_date;
+        }
         setVal('fdAmount', amountText);
-        setVal('fdEstProfitRate', est ? (est.rate > 0 ? '+' : '') + est.rate.toFixed(2) + '%' : '--',
-            est ? (est.rate > 0 ? 'fd-pos' : est.rate < 0 ? 'fd-neg' : '') : '');
-        setVal('fdEstProfitAmount', est ? (est.amount > 0 ? '+' : '') + (Math.abs(est.amount) >= 10000 ? (est.amount / 10000).toFixed(2) + '万' : est.amount.toFixed(2) + '元') : '--',
-            est ? (est.amount > 0 ? 'fd-pos' : est.amount < 0 ? 'fd-neg' : '') : '');
-        setVal('fdStatus', fund.premium_status || '未知');
+        
+        // 预计收益（合并显示）
+        const estProfitEl = document.getElementById('fdEstProfit');
+        if (estProfitEl) {
+            estProfitEl.innerHTML = estProfitText;
+            estProfitEl.className = 'fd-kpi-value';
+            if (estProfitCls) estProfitEl.classList.add(estProfitCls);
+        }
 
         // 申购限额
         const limitEl = document.getElementById('fdPurchaseLimit');
         if (limitEl) {
             if (fund.can_purchase === false) {
-                limitEl.parentElement.style.display = 'none';
-            } else {
-                limitEl.parentElement.style.display = '';
-                if (fund.purchase_limit != null && fund.purchase_limit > 0) {
-                    limitEl.textContent = (fund.purchase_limit / 10000).toFixed(0) + '万';
+                limitEl.textContent = '暂停申购';
+            } else if (fund.purchase_limit != null && fund.purchase_limit > 0) {
+                const limit = fund.purchase_limit;
+                if (limit >= 100000000) {
+                    limitEl.textContent = (limit / 100000000).toFixed(2) + '亿';
+                } else if (limit >= 10000) {
+                    limitEl.textContent = (limit / 10000).toFixed(2) + '万';
                 } else {
-                    limitEl.textContent = '不限额';
+                    limitEl.textContent = limit.toFixed(2) + '元';
                 }
+            } else {
+                limitEl.textContent = '开放申购';
             }
         }
-
-        setVal('fdNavDate', fund.nav_date || '-');
 
         this._detailEstProfit = est;
         this._detailFundCode = fund.code;

@@ -11,19 +11,16 @@ import logging
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 
-from datasource.base import LOFDataSource
-
 logger = logging.getLogger(__name__)
 
 
-class ExchangeShareSource(LOFDataSource):
+class ExchangeShareSource:
     """交易所场内份额数据源：从上交所和深交所获取LOF基金场内份额"""
     
     name = "ExchangeShares"
     """交易所场内份额数据客户端"""
     
     def __init__(self):
-        super().__init__()
         # 上交所Session
         self.sse_session = requests.Session()
         self.sse_session.headers.update({

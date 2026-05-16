@@ -16,6 +16,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
 /* Header */
 .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 30px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3); }
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
 .header-brand { display: flex; align-items: center; gap: 12px; }
 .brand-icon { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; }
 .header h1 { font-size: 1.8rem; font-weight: 600; }
@@ -102,6 +113,30 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .rank-premium { font-weight: 700; font-size: 0.95rem; color: var(--pos); }
 .rank-discount { color: var(--neg) !important; }
 
+/* 数据状态面板 */
+.status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.status-panel .status-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px;
+    background: rgba(74, 144, 217, 0.05);
+    border-radius: 6px;
+}
+.status-panel .status-label {
+    font-size: 0.8rem;
+    color: var(--text2);
+}
+.status-panel .status-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
 /* Legend */
 .legend-items { display: flex; flex-direction: column; gap: 10px; }
 .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
@@ -113,6 +148,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 /* Content */
 .content { background: var(--card); border-radius: 12px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); transition: background 0.3s ease, box-shadow 0.3s ease; }
 .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 15px; }
+.toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+.toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
 .search-box { flex: 1; max-width: 400px; position: relative; }
 .search-box input { width: 100%; padding: 10px 45px 10px 15px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; transition: border-color 0.3s; background: var(--card); color: var(--text); }
 .search-box input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(74,144,217,0.1); }
@@ -176,6 +223,47 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .dark-mode .btn-arb-help:hover { background: #1a2a48; }
 .pagination-info { font-size: 0.9rem; color: var(--text2); }
 
+/* 筛选下拉框 */
+.filter-box {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+#purchaseLimitFilter {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: white;
+    font-size: 0.85rem;
+    cursor: pointer;
+    min-width: 140px;
+    transition: border-color 0.2s;
+}
+#purchaseLimitFilter:hover {
+    border-color: var(--primary);
+}
+#purchaseLimitFilter:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.1);
+}
+.btn-clear-filter {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: white;
+    color: var(--text2);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    line-height: 1;
+}
+.btn-clear-filter:hover {
+    background: #fee;
+    border-color: #e74c3c;
+    color: #e74c3c;
+}
+
 /* Settings Modal */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .modal-content { background: var(--card); border-radius: 12px; width: 90%; max-width: 400px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
@@ -190,6 +278,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .input-with-unit input { flex: 1; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; background: var(--bg); color: var(--text); transition: border-color 0.3s, background 0.3s, color 0.3s; }
 .input-with-unit input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(74,144,217,0.1); }
 .input-with-unit .unit { color: var(--text2); font-size: 0.9rem; }
+.form-select {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 1rem;
+    background: var(--bg);
+    color: var(--text);
+    transition: border-color 0.3s, background 0.3s, color 0.3s;
+}
+.form-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(74,144,217,0.1);
+}
 .form-hint { font-size: 0.8rem; color: var(--text2); margin-top: 6px; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 15px 20px; border-top: 1px solid var(--border); flex-shrink: 0; }
 .btn-primary { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
@@ -201,26 +304,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .table-container { overflow-x: auto; }
 .fund-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; table-layout: fixed; }
 .fund-table thead { background: #f8f9fa; position: sticky; top: 0; z-index: 10; }
-.fund-table th { padding: 12px 10px; text-align: left; font-weight: 600; color: var(--text2); border-bottom: 2px solid var(--border); user-select: none; white-space: nowrap; }
-.fund-table th.sortable { cursor: pointer; position: relative; padding-right: 18px; }
+.fund-table th { padding: 12px 10px; text-align: center; font-weight: 600; color: var(--text2); border-bottom: 2px solid var(--border); user-select: none; white-space: nowrap; }
+.fund-table th.sortable { cursor: pointer; position: relative; }
 .fund-table th.sortable:hover { color: var(--primary); }
 .fund-table th.active { color: var(--primary); }
-.fund-table th.sort-asc::after, .fund-table th.sort-desc::after { content: ''; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); opacity: 0.6; font-size: 10px; }
+.fund-table th.sort-asc::after, .fund-table th.sort-desc::after { content: ''; position: absolute; right: 2px; top: 50%; transform: translateY(-50%); opacity: 0.6; font-size: 10px; }
 .fund-table th.sort-asc::after { content: '▲'; opacity: 1; }
 .fund-table th.sort-desc::after { content: '▼'; opacity: 1; }
-.fund-table td { padding: 12px 10px; border-bottom: 1px solid var(--border); }
+.fund-table td { padding: 12px 10px; border-bottom: 1px solid var(--border); text-align: center; }
 .fund-row { transition: background-color 0.2s; }
 .fund-row:hover { background-color: #f8f9fa; }
 .col-code { width: 68px; font-weight: 600; }
-.col-name { width: 15%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.col-name { width: 15%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .col-price, .col-nav, .col-change, .col-premium, .col-avg-premium { width: 8%; }
 .col-amount { width: 9%; }
-.col-est-profit-rate, .col-est-profit-amount { width: 9%; }
+.col-est-profit { width: 12%; } /* 合并后的预计收益列 */
+.col-shares { width: 10%; }
+.col-shares-incr { width: 9%; }
+.col-purchase-limit { width: 9%; }
 .col-status { width: 60px; }
 .col-time { width: 72px; }
 .fund-table td { font-size: 0.83rem; }
-.col-price, .col-nav { text-align: right; width: 100px; }
-.col-change, .col-premium, .col-avg-premium, .col-amount, .col-est-profit-rate, .col-est-profit-amount { text-align: right; }
+.col-price, .col-nav { width: 100px; }
 .col-status { width: 80px; }
 .col-time { width: 130px; font-size: 0.85rem; color: var(--text2); }
 .premium-positive { color: var(--pos); font-weight: 600; }
@@ -230,6 +335,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .change.up { color: var(--pos); }
 .change.down { color: var(--neg); }
 .nav-badge { display: inline-block; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; margin-left: 4px; background: #e8f4f8; color: var(--primary); }
+/* 净值下方的日期显示 */
+.nav-date {
+    font-size: 0.7rem;
+    color: var(--text2);
+    margin-top: 3px;
+    opacity: 0.8;
+}
 .status-badge { display: inline-block; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px; }
 .status-badge.溢价 { background: #fdeaea; color: var(--pos); }
 .status-badge.折价 { background: #e8f5e9; color: var(--neg); }
@@ -362,6 +474,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 }
 .btn-profit-info:hover { border-color: var(--primary); color: var(--primary); background: #f0f4ff; }
 
+/* 预计收益合并显示样式 */
+.col-est-profit {
+    line-height: 1.4;
+    text-align: center;
+}
+.est-profit-rate {
+    font-size: 0.7rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+.est-profit-amount {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
 .profit-popover-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0,0,0,0.35); z-index: 9999;
@@ -469,6 +597,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .dark-mode .footer { color: var(--text2); }
 .dark-mode .footer .legal-links a { color: var(--primary); }
 .dark-mode .form-hint { color: var(--text2); }
+.dark-mode .form-select { background: var(--bg); color: var(--text); border-color: var(--border); }
 .dark-mode .loading-hint { color: var(--text2); }
 /* 详情弹窗 */
 .dark-mode .fund-detail-modal { box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
@@ -588,9 +717,17 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
 .fd-kpi-item {
     background: #f8f9fc; border-radius: 10px; padding: 12px 14px;
     display: flex; flex-direction: column; gap: 4px;
+    align-items: center;
+    text-align: center;
 }
 .fd-kpi-label { font-size: 0.75rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
 .fd-kpi-value { font-size: 1rem; font-weight: 600; color: var(--text); }
+.fd-kpi-date {
+    font-size: 0.7rem;
+    color: var(--text2);
+    opacity: 0.8;
+    margin-top: 2px;
+}
 .fd-kpi-value.fd-pos { color: var(--pos); }
 .fd-kpi-value.fd-neg { color: var(--neg); }
 .fd-kpi-value.fd-change-up { color: var(--pos); }
@@ -731,28 +868,41 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
 
 /* 场内份额列样式 */
 .col-shares {
-    text-align: center;
-    padding: 8px 6px;
+    text-align: right;
+    padding: 12px 10px;
 }
 
 .shares-cell {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
     line-height: 1.3;
+    align-items: center;
 }
 
 .shares-amount {
-    font-size: 14px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text);
     font-family: 'Arial', sans-serif;
 }
 
 .shares-date {
-    font-size: 11px;
+    font-size: 0.7rem;
     color: var(--text2);
-    margin-top: 2px;
+    margin-top: 1px;
+}
+
+/* 新增份额列样式 */
+.col-shares-incr {
+    text-align: right;
+    padding: 12px 10px;
+    font-weight: 500;
+}
+
+/* 申购限额列样式 */
+.col-purchase-limit {
+    text-align: right;
+    padding: 12px 10px;
 }
 
 /* 移动端卡片份额行 */
