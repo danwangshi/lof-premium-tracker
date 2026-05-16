@@ -4,8 +4,11 @@
 
 ```
 build/
-├── Dockerfile             # Docker 镜像构建文件
-└── README.md              # 本文件
+├── Dockerfile                 # Docker 镜像构建文件
+├── docker-compose.build.yml   # 构建配置
+├── build.sh                   # Linux/Mac 构建脚本
+├── build.ps1                  # Windows PowerShell 构建脚本
+└── README.md                  # 本文件
 ```
 
 ---
@@ -14,7 +17,36 @@ build/
 
 ### 1. 构建 Docker 镜像
 
-**方式一：使用 Docker Compose（推荐）**
+**方式一：使用构建脚本（推荐）**
+
+Linux/Mac:
+```bash
+# 进入项目根目录
+cd LOF-Fund-Tools
+
+# 赋予执行权限
+chmod +x build/build.sh
+
+# 构建并导出镜像（默认 latest 版本）
+./build/build.sh
+
+# 或指定版本号
+./build/build.sh v1.2.0
+```
+
+Windows PowerShell:
+```powershell
+# 进入项目根目录
+cd LOF-Fund-Tools
+
+# 构建并导出镜像（默认 latest 版本）
+.\build\build.ps1
+
+# 或指定版本号
+.\build\build.ps1 -Version v1.2.0
+```
+
+**方式二：使用 Docker Compose**
 
 ```bash
 # 进入项目根目录
@@ -24,7 +56,7 @@ cd LOF-Fund-Tools
 docker compose -f build/docker-compose.build.yml build
 ```
 
-**方式二：直接使用 Dockerfile**
+**方式三：直接使用 Dockerfile**
 
 ```bash
 # 构建镜像
@@ -32,6 +64,17 @@ docker build -f build/Dockerfile -t lof-fund-app:latest .
 ```
 
 ### 2. 运行容器
+
+构建脚本会自动将镜像导出到 `docker/images/` 目录。
+
+**加载镜像：**
+
+```bash
+# 从压缩文件加载
+docker load -i docker/images/lof-fund-app-latest.tar.gz
+```
+
+**启动服务：**
 
 ```bash
 # 使用 docker-compose（推荐）
