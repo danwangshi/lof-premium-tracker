@@ -11,7 +11,7 @@
 
 **全市场 ~540 只深沪 LOF 实时折溢价监控 · 365天日线图表 · 套利模拟回测 · 溢价率排行 · PC + 移动端**
 
-[在线使用](https://jinkuaicha.com) · [技术文档](docs/TECH.md) · [开发指南](docs/DEVELOPMENT.md)
+[在线使用](https://jinkuaicha.com) · [更新日志](CHANGELOG_USER.md) · [技术文档](docs/TECH.md) · [开发指南](docs/DEVELOPMENT.md)
 
 </div>
 
@@ -264,4 +264,4 @@ git push origin main
 
 > 仅供个人学习与非商业场景免费使用。任何企业、组织机构及个人用于商业运营、私有化部署、二次修改后集成至商业产品及服务，均须提前获得作者书面授权许可。
 
-Copyright © 2026 [danwangshi](https://github.com/danwangshi)
+Copyright © 2026 [MistyBridge](https://github.com/MistyBridge)
