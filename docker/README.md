@@ -255,7 +255,7 @@ docker exec lof-postgres pg_isready
 ## 📝 相关文档
 
 - [Docker 构建指南](../build/README.md)
-- [快速开始指南](../DOCKER_QUICKSTART.md)
+- [快速开始指南](QUICKSTART.md)
 - [项目 README](../README.md)
 - [技术文档](../docs/TECH.md)
 

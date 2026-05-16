@@ -142,5 +142,5 @@ docker build -f build/Dockerfile --progress=plain -t lof-fund-app .
 ## 📝 相关文档
 
 - [Docker Compose 使用](../docker/README.md)
-- [快速开始指南](../DOCKER_QUICKSTART.md)
+- [快速开始指南](../docker/QUICKSTART.md)
 - [项目 README](../README.md)
