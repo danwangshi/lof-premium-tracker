@@ -490,10 +490,10 @@ class LofFundMonitor {
                 if (!isNaN(shares) && shares > 0) {
                     const rate = (incr / shares * 100).toFixed(2);
                     const sign = rate > 0 ? '+' : '';
-                    incrRateText = `<br><span class="${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate}%</span>`;
+                    incrRateText = `<br><span class="shares-incr-rate ${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate}%</span>`;
                 }
                 // 直接显示数值，保留两位小数，并添加比例（分行显示）
-                sharesIncrText = incr.toFixed(2) + incrRateText;
+                sharesIncrText = `<span class="shares-incr-value">${incr.toFixed(2)}</span>${incrRateText}`;
                 sharesIncrClass = incr > 0 ? 'premium-positive' : incr < 0 ? 'premium-negative' : 'premium-zero';
             }
         }
@@ -646,9 +646,9 @@ class LofFundMonitor {
                 if (!isNaN(shares) && shares > 0) {
                     const rate = (incr / shares * 100).toFixed(2);
                     const sign = rate > 0 ? '+' : '';
-                    incrRate = `<div class="${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate}%</div>`;
+                    incrRate = `<div class="shares-incr-rate ${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate}%</div>`;
                 }
-                sharesText = `<div>新增份额${incr.toFixed(2)}万</div>${incrRate}`;
+                sharesText = `<div class="shares-incr-value">新增份额${incr.toFixed(2)}万</div>${incrRate}`;
                 sharesClass = incr > 0 ? 'mc-pos' : incr < 0 ? 'mc-neg' : '';
             }
         }
@@ -1356,9 +1356,9 @@ class LofFundMonitor {
                 if (!isNaN(shares) && shares > 0) {
                     const rate = (incr / shares * 100).toFixed(2);
                     const sign = rate > 0 ? '+' : '';
-                    incrRateText = `<br><span class="${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate}%</span>`;
+                    incrRateText = `<br><span class="shares-incr-rate ${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate}%</span>`;
                 }
-                sharesIncrText = incr.toFixed(2) + incrRateText;
+                sharesIncrText = `<span class="shares-incr-value">${incr.toFixed(2)}</span>${incrRateText}`;
             }
         }
 
