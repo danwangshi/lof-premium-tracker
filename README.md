@@ -23,6 +23,8 @@
 
 > **LOF 基金**（Listed Open-Ended Fund，上市型开放式基金）同时存在场内交易价格和场外基金净值，二者偏差即为折溢价。当溢价率足够覆盖交易成本时，投资者可通过 **申购→卖出** 或 **买入→赎回** 进行套利操作。
 
+📚 **相关文档**：[技术架构](docs/TECH.md) · [开发指南](docs/DEVELOPMENT.md) · [环境配置](ENV_SETUP.md) · [更新日志](CHANGELOG_USER.md)
+
 ---
 
 ## 核心功能
@@ -158,6 +160,8 @@ Legacy (后备数据源)
 
 ### 本地开发
 
+详细的环境配置说明请参考 **[环境配置指南](ENV_SETUP.md)**。
+
 ```bash
 # 克隆仓库
 git clone https://github.com/danwangshi/lof-premium-tracker.git
@@ -180,7 +184,11 @@ flask run --port 5000
 # http://localhost:8080?api=http://localhost:5000
 ```
 
+💡 **更多开发细节**请查看 [开发指南](docs/DEVELOPMENT.md)，包含调试技巧、代码规范和贡献流程。
+
 ### 生产部署
+
+详细的部署流程和配置说明请参考 **[技术文档](docs/TECH.md)** 中的部署章节。
 
 ```bash
 # 前端 — Cloudflare Pages
@@ -194,6 +202,10 @@ git push origin main
 
 ## API 端点
 
+完整的 API 文档和参数说明请参考 **[技术文档](docs/TECH.md)** 中的 API 接口章节。
+
+| 方法 | 路径 | 参数 | 说明 |
+|------|------|------|------|
 | `GET` | `/api/funds` | `page`, `page_size`, `sort`, `order`, `keyword`, `min_premium`, `min_amount`, `purchase_limit` | 全量基金列表（分页 + 排序 + 搜索 + 多条件筛选 + 申购限额筛选） |
 | `GET` | `/api/purchase-limits` | — | 获取所有申购限额选项（用于前端下拉多选） |
 | `GET` | `/api/funds/<code>` | — | 单只基金详情（含申购/赎回费率、场内份额、新增份额） |
@@ -215,9 +227,16 @@ git push origin main
 | 历史 K 线 / 历史净值 | 每日 | 懒更新时自动保存当日快照 |
 | 历史数据保留期 | 365 天 | 超期数据自动清理 |
 
+📊 **数据源策略详解**请查看 [技术文档](docs/TECH.md) 中的数据源适配章节。
+
 ---
 
 ## 常见问题 (FAQ)
+
+更多常见问题和技术细节请参考：
+- [技术文档](docs/TECH.md) - 系统架构和数据流说明
+- [开发指南](docs/DEVELOPMENT.md) - 环境搭建和调试技巧
+- [更新日志](CHANGELOG_USER.md) - 功能更新和问题修复记录
 
 <details>
 <summary><strong>LOF 基金溢价率怎么算？</strong></summary>
@@ -253,8 +272,11 @@ git push origin main
 
 完整的架构设计、数据流说明、模块详解、配置参数等详见：
 
-- **[技术文档 (TECH.md)](docs/TECH.md)** — 系统架构、数据源适配、数据库设计
-- **[开发指南 (DEVELOPMENT.md)](docs/DEVELOPMENT.md)** — 本地环境搭建、调试技巧、贡献指南
+- 📘 **[技术文档 (TECH.md)](docs/TECH.md)** — 系统架构、数据源适配、数据库设计、API 接口
+- 📘 **[开发指南 (DEVELOPMENT.md)](docs/DEVELOPMENT.md)** — 本地环境搭建、调试技巧、贡献指南
+- 📘 **[环境配置 (ENV_SETUP.md)](ENV_SETUP.md)** — 环境变量设置、PostgreSQL 配置、常见问题
+- 📝 **[更新日志 (CHANGELOG_USER.md)](CHANGELOG_USER.md)** — 用户友好的版本更新说明
+- 📝 **[技术更新日志 (CHANGELOG.md)](CHANGELOG.md)** — 详细的技术变更对比
 
 ---
 
