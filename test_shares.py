@@ -9,7 +9,7 @@ import logging
 # 添加 backend 目录到路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 
-from exchange_share_client import get_exchange_client
+from datasource.share_source import get_share_source
 from history_db import get_history_db
 
 logging.basicConfig(
@@ -25,7 +25,7 @@ def test_fetch_shares():
     logger.info("测试交易所份额数据获取")
     logger.info("=" * 80)
     
-    client = get_exchange_client()
+    client = get_share_source()
     
     # 测试上交所
     logger.info("\n【1】测试上交所数据获取...")
@@ -72,7 +72,7 @@ def test_save_shares():
     logger.info("=" * 80)
     
     try:
-        client = get_exchange_client()
+        client = get_share_source()
         hdb = get_history_db()
         
         # 获取少量数据用于测试

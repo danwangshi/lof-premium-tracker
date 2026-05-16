@@ -19,7 +19,7 @@ from config import Config
 from history_db import get_history_db
 from fee_fetcher import fetch_fees_batch, load_fee_cache, save_fee_cache
 from datasource.manager import get_datasource_manager
-from exchange_share_client import get_exchange_client
+from datasource.share_source import get_share_source
 
 logger = logging.getLogger(__name__)
 
@@ -331,8 +331,8 @@ class LOFDataFetcher:
         def fetch_shares_task():
             try:
                 logger.info("Starting shares data fetch...")
-                client = get_exchange_client()
-                shares_data = client.fetch_all_shares()
+                source = get_share_source()
+                shares_data = source.fetch_all_shares()
                 
                 if shares_data:
                     # 保存到数据库

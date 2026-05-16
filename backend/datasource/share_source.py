@@ -11,13 +11,19 @@ import logging
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 
+from datasource.base import LOFDataSource
+
 logger = logging.getLogger(__name__)
 
 
-class ExchangeShareClient:
+class ExchangeShareSource(LOFDataSource):
+    """交易所场内份额数据源：从上交所和深交所获取LOF基金场内份额"""
+    
+    name = "ExchangeShares"
     """交易所场内份额数据客户端"""
     
     def __init__(self):
+        super().__init__()
         # 上交所Session
         self.sse_session = requests.Session()
         self.sse_session.headers.update({
@@ -361,27 +367,27 @@ class ExchangeShareClient:
 
 
 # 单例模式
-_client_instance = None
+_share_source_instance = None
 
-def get_exchange_client() -> ExchangeShareClient:
-    """获取 ExchangeShareClient 单例"""
-    global _client_instance
-    if _client_instance is None:
-        _client_instance = ExchangeShareClient()
-    return _client_instance
+def get_share_source() -> ExchangeShareSource:
+    """获取 ExchangeShareSource 单例"""
+    global _share_source_instance
+    if _share_source_instance is None:
+        _share_source_instance = ExchangeShareSource()
+    return _share_source_instance
 
 
-def reset_client():
-    """重置客户端（用于测试）"""
-    global _client_instance
-    _client_instance = None
+def reset_share_source():
+    """重置数据源（用于测试）"""
+    global _share_source_instance
+    _share_source_instance = None
 
 
 if __name__ == '__main__':
     # 测试代码
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
-    client = get_exchange_client()
+    client = get_share_source()
     
     print("=" * 80)
     print("测试交易所份额数据获取")
