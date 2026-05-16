@@ -1313,7 +1313,7 @@ class LofFundMonitor {
         const setVal = (id, text, cls) => {
             const el = document.getElementById(id);
             if (!el) return;
-            el.textContent = text || '--';
+            el.innerHTML = text || '--';
             el.className = 'fd-kpi-value';
             if (cls) el.classList.add(cls);
         };

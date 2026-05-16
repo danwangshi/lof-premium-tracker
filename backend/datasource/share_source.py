@@ -327,20 +327,26 @@ class ExchangeShareSource:
         
         return cleaned
     
-    def fetch_all_shares(self) -> Dict[str, Dict]:
+    def fetch_all_shares(self, date: str = None) -> Dict[str, Dict]:
         """
         获取所有交易所的份额数据并合并
+        
+        Args:
+            date: 指定日期，格式 YYYY-MM-DD。如果不指定，则获取最新数据
         
         Returns:
             字典，key为基金代码，value为份额信息
         """
-        logger.info("开始获取所有交易所份额数据...")
+        if date:
+            logger.info(f"开始获取所有交易所份额数据（日期: {date}）...")
+        else:
+            logger.info("开始获取所有交易所份额数据...")
         
         # 获取上交所数据
-        sse_data = self.fetch_sse_shares()
+        sse_data = self.fetch_sse_shares(date=date)
         
         # 获取深交所数据
-        szse_data = self.fetch_szse_shares()
+        szse_data = self.fetch_szse_shares(date=date)
         
         # 合并数据（以基金代码为key）
         merged = {}

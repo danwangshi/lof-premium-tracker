@@ -401,14 +401,8 @@ def list_funds():
                     yesterday_share = float(s2) if s2 is not None else 0.0
                     incr_val = round(today_share - yesterday_share, 2)
                     item["shares_incr"] = incr_val
-                    # 计算新增份额百分比：(T日份额 - T-1日份额) / T-1日份额 * 100%
-                    if yesterday_share > 0:
-                        incr_rate = round((incr_val / yesterday_share) * 100, 2)
-                        item["shares_incr_rate"] = incr_rate
-                    else:
-                        item["shares_incr_rate"] = 0
                     if code == '160644':
-                        logger.info(f"[DEBUG] {code}: Latest={latest['date']}({today_share}), Previous={previous['date']}({yesterday_share}), Incr={incr_val}, Rate={item['shares_incr_rate']}%")
+                        logger.info(f"[DEBUG] {code}: Latest={latest['date']}({today_share}), Previous={previous['date']}({yesterday_share}), Incr={incr_val}")
                 else:
                     item["shares_incr"] = 0
                     if code == '160644':
