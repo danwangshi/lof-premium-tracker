@@ -37,6 +37,9 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Docker Compose build failed"
     }
+    
+    # 重新标记镜像
+    docker tag lof-fund-app:latest $FullImageName
 } catch {
     Write-Host "Docker Compose 构建失败，尝试直接使用 Dockerfile..." -ForegroundColor Yellow
     docker build -f build/Dockerfile -t $FullImageName .

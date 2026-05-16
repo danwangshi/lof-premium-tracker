@@ -38,6 +38,9 @@ echo -e "镜像名称: ${FULL_IMAGE_NAME}"
 docker compose -f build/docker-compose.build.yml build || \
 docker build -f build/Dockerfile -t "${FULL_IMAGE_NAME}" .
 
+# 重新标记镜像（确保标签正确）
+docker tag lof-fund-app:latest "${FULL_IMAGE_NAME}" 2>/dev/null || true
+
 if [ $? -ne 0 ]; then
     echo -e "${RED}错误: 镜像构建失败${NC}"
     exit 1
