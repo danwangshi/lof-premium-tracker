@@ -11,7 +11,7 @@
 
 **全市场 ~540 只深沪 LOF 实时折溢价监控 · 365天日线图表 · 套利模拟回测 · 溢价率排行 · PC + 移动端**
 
-[在线使用](https://jinkuaicha.com) · [更新日志](CHANGELOG_USER.md) · [技术文档](docs/TECH.md) · [开发指南](docs/DEVELOPMENT.md)
+[在线使用](https://jinkuaicha.com) · [技术文档](docs/TECH.md) · [开发指南](docs/DEVELOPMENT.md)
 
 </div>
 
@@ -35,6 +35,8 @@
 | 三日均溢 | 近 3 个交易日平均溢价率，过滤短期噪音，发现稳定套利标的 |
 | 涨跌幅 & 成交额 | 当日涨跌幅 + 实时成交额，辅助判断流动性与市场情绪 |
 | 净值类型标注 | 区分「正式净值」（盘后公布）与「估算净值」（盘中实时），明确数据可靠程度 |
+| 场内份额监控 | 展示场内份额及新增份额变化，辅助判断资金流向 |
+| 申购限额筛选 | 支持按申购限额多选筛选，快速定位暂停申购或特定限额基金 |
 
 ### 套利分析
 | 功能 | 说明 |
@@ -52,6 +54,7 @@
 | 多端支持 | Web 网页 + 移动端 H5，响应式设计自适应屏幕 |
 | 基金详情弹窗 | 12 项 KPI 指标 + 7 交易日价格/净值双线 Chart.js 图表 |
 | 个性化筛选 | 自定义溢价率阈值、三日均溢阈值、成交额门槛、佣金参数 |
+| 申购限额筛选 | 下拉多选筛选（暂停申购/开放申购/具体限额），一键清空 |
 
 ---
 
@@ -73,7 +76,7 @@ lof-premium-tracker/
 │   ├── api/[[path]].js        # /api/* → Railway 后端代理
 │   └── health.js              # /health 健康检查代理
 ├── backend/                   # Flask 后端服务
-│   ├── app.py                 # API 路由（6 个 REST 端点）
+│   ├── app.py                 # API 路由（7 个 REST 端点）
 │   ├── config.py              # 配置常量
 │   ├── data_fetcher.py        # 多数据源聚合引擎
 │   ├── fee_fetcher.py         # 基金费率爬虫（申购/赎回费率）
@@ -82,10 +85,6 @@ lof-premium-tracker/
 │   ├── datasource/            # 分级数据源适配层（AKShare 主源 + 东方财富/天天基金/腾讯后备）
 │   ├── sz_lof_codes.json      # 深市 LOF 代码缓存（每周自动刷新）
 │   └── requirements.txt       # Python 后端依赖
-
-│   ├── pages/index/           # 列表页（基金列表 + 排行榜）
-│   ├── pages/detail/          # 详情页
-│   └── utils/                 # 工具函数
 ├── docs/
 │   ├── TECH.md                # 技术架构文档
 │   └── DEVELOPMENT.md         # 本地开发指南
@@ -161,15 +160,20 @@ Legacy (后备数据源)
 
 ```bash
 # 克隆仓库
-git clone https://github.com/MistyBridge/lof-premium-tracker.git
+git clone https://github.com/danwangshi/lof-premium-tracker.git
 cd lof-premium-tracker
+
+# 创建虚拟环境并安装依赖
+python -m venv venv
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Linux/Mac
+pip install -r requirements.txt
 
 # 启动前端（端口 8080）
 py -m http.server 8080
 
 # 启动后端（端口 5000，需新开终端）
 cd backend
-pip install -r requirements.txt
 flask run --port 5000
 
 # 浏览器访问
@@ -190,10 +194,9 @@ git push origin main
 
 ## API 端点
 
-| 方法 | 路径 | 参数 | 说明 |
-|------|------|------|------|
-| `GET` | `/api/funds` | `page`, `page_size`, `sort`, `order`, `keyword`, `min_premium`, `min_amount` | 全量基金列表（分页 + 排序 + 搜索 + 多条件筛选） |
-| `GET` | `/api/funds/<code>` | — | 单只基金详情（含申购/赎回费率） |
+| `GET` | `/api/funds` | `page`, `page_size`, `sort`, `order`, `keyword`, `min_premium`, `min_amount`, `purchase_limit` | 全量基金列表（分页 + 排序 + 搜索 + 多条件筛选 + 申购限额筛选） |
+| `GET` | `/api/purchase-limits` | — | 获取所有申购限额选项（用于前端下拉多选） |
+| `GET` | `/api/funds/<code>` | — | 单只基金详情（含申购/赎回费率、场内份额、新增份额） |
 | `GET` | `/api/funds/<code>/chart` | — | 近 7 交易日价格/净值双线曲线数据 |
 | `GET` | `/health` | — | 服务健康检查（缓存状态、最后更新时间） |
 | `POST` | `/refresh` | — | 手动触发全量数据刷新 |
@@ -206,10 +209,11 @@ git push origin main
 | 数据类型 | 更新频率 | 触发方式 |
 |----------|----------|----------|
 | 场内实时价格 / 净值 / 溢价率 | 每 5 分钟 | 用户访问时懒更新 |
+| 场内份额 / 新增份额 | 每日 | T-1 日数据，非交易日自动跳过 |
 | 基金申购/赎回费率 | 按需 | 首次查看某基金时抓取并缓存 |
 | 深市 LOF 代码列表 | 每周 | 自动扫描 push2delay 全表 |
 | 历史 K 线 / 历史净值 | 每日 | 懒更新时自动保存当日快照 |
-| 历史数据保留期 | 21 天 | 超期数据自动清理 |
+| 历史数据保留期 | 365 天 | 超期数据自动清理 |
 
 ---
 
@@ -260,4 +264,4 @@ git push origin main
 
 > 仅供个人学习与非商业场景免费使用。任何企业、组织机构及个人用于商业运营、私有化部署、二次修改后集成至商业产品及服务，均须提前获得作者书面授权许可。
 
-Copyright © 2026 [MistyBridge](https://github.com/MistyBridge)
+Copyright © 2026 [danwangshi](https://github.com/danwangshi)
