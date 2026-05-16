@@ -483,13 +483,17 @@ class LofFundMonitor {
         let sharesIncrClass = 'premium-zero';
         if (fund.shares_incr !== null && fund.shares_incr !== undefined) {
             const incr = parseFloat(fund.shares_incr);  // 单位：万份，确保转换为数字
+            const shares = parseFloat(fund.shares);
             if (!isNaN(incr)) {
-                // 计算新增比例（使用后端计算的 shares_incr_rate）
+                // 计算新增比例：新增份额 / (当前份额 - 新增份额) = 新增份额 / 昨日份额
                 let incrRateText = '';
-                const rate = fund.shares_incr_rate !== null && fund.shares_incr_rate !== undefined ? parseFloat(fund.shares_incr_rate) : null;
-                if (rate !== null && !isNaN(rate)) {
-                    const sign = rate > 0 ? '+' : '';
-                    incrRateText = `<br><span class="shares-incr-rate ${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate.toFixed(2)}%</span>`;
+                if (!isNaN(shares)) {
+                    const yesterdayShares = shares - incr;  // 昨日份额 = 当前份额 - 新增份额
+                    if (yesterdayShares > 0) {
+                        const rate = (incr / yesterdayShares * 100).toFixed(2);
+                        const sign = rate > 0 ? '+' : '';
+                        incrRateText = `<br><span class="shares-incr-rate ${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate}%</span>`;
+                    }
                 }
                 // 直接显示数值，保留两位小数，并添加比例（分行显示）
                 sharesIncrText = `<span class="shares-incr-value">${incr.toFixed(2)}</span>${incrRateText}`;
@@ -638,13 +642,17 @@ class LofFundMonitor {
         let sharesClass = '';
         if (fund.shares_incr !== null && fund.shares_incr !== undefined) {
             const incr = parseFloat(fund.shares_incr);
+            const shares = parseFloat(fund.shares);
             if (!isNaN(incr)) {
-                // 计算新增比例（使用后端计算的 shares_incr_rate）
+                // 计算新增比例：新增份额 / (当前份额 - 新增份额) = 新增份额 / 昨日份额
                 let incrRate = '';
-                const rate = fund.shares_incr_rate !== null && fund.shares_incr_rate !== undefined ? parseFloat(fund.shares_incr_rate) : null;
-                if (rate !== null && !isNaN(rate)) {
-                    const sign = rate > 0 ? '+' : '';
-                    incrRate = `<div class="shares-incr-rate ${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate.toFixed(2)}%</div>`;
+                if (!isNaN(shares)) {
+                    const yesterdayShares = shares - incr;  // 昨日份额 = 当前份额 - 新增份额
+                    if (yesterdayShares > 0) {
+                        const rate = (incr / yesterdayShares * 100).toFixed(2);
+                        const sign = rate > 0 ? '+' : '';
+                        incrRate = `<div class="shares-incr-rate ${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate}%</div>`;
+                    }
                 }
                 sharesText = `<div class="shares-incr-value">新增份额${incr.toFixed(2)}万</div>${incrRate}`;
                 sharesClass = incr > 0 ? 'mc-pos' : incr < 0 ? 'mc-neg' : '';
@@ -1347,13 +1355,17 @@ class LofFundMonitor {
         let sharesIncrText = '-';
         if (fund.shares_incr !== null && fund.shares_incr !== undefined) {
             const incr = parseFloat(fund.shares_incr);
+            const shares = parseFloat(fund.shares);
             if (!isNaN(incr)) {
-                // 计算新增比例（使用后端计算的 shares_incr_rate）
+                // 计算新增比例：新增份额 / (当前份额 - 新增份额) = 新增份额 / 昨日份额
                 let incrRateText = '';
-                const rate = fund.shares_incr_rate !== null && fund.shares_incr_rate !== undefined ? parseFloat(fund.shares_incr_rate) : null;
-                if (rate !== null && !isNaN(rate)) {
-                    const sign = rate > 0 ? '+' : '';
-                    incrRateText = `<br><span class="shares-incr-rate ${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate.toFixed(2)}%</span>`;
+                if (!isNaN(shares)) {
+                    const yesterdayShares = shares - incr;  // 昨日份额 = 当前份额 - 新增份额
+                    if (yesterdayShares > 0) {
+                        const rate = (incr / yesterdayShares * 100).toFixed(2);
+                        const sign = rate > 0 ? '+' : '';
+                        incrRateText = `<br><span class="shares-incr-rate ${rate > 0 ? 'mc-pos' : rate < 0 ? 'mc-neg' : ''}">${sign}${rate}%</span>`;
+                    }
                 }
                 sharesIncrText = `<span class="shares-incr-value">${incr.toFixed(2)}</span>${incrRateText}`;
             }
