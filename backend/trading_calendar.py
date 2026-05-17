@@ -30,13 +30,11 @@ def is_trading_day(date: Optional[datetime] = None) -> bool:
         target_date = pd.Timestamp(date.date())
         
         is_trading = sse_calendar.is_session(target_date)
-        logger.debug(f"[交易日判断] {date.strftime('%Y-%m-%d')} {'是' if is_trading else '不是'}交易日")
         return is_trading
     except Exception as e:
         # 如果交易日历失败，降级为简单的周一到周五判断
         logger.warning(f"[交易日判断] 交易日历查询失败 ({e})，使用简单判断")
         is_trading = date.weekday() < 5  # 0-4为周一到周五
-        logger.debug(f"[交易日判断] {date.strftime('%Y-%m-%d')} {'是' if is_trading else '不是'}交易日（降级判断）")
         return is_trading
 
 

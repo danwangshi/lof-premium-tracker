@@ -121,7 +121,9 @@ class WeWorkNotifier:
         # 逐条发送
         success_count = 0
         for i, msg in enumerate(messages, 1):
-            logger.info(f"发送第 {i}/{len(messages)} 条消息，长度: {len(msg.encode('utf-8'))} 字节")
+            msg_bytes = len(msg.encode('utf-8'))
+            logger.info(f"发送第 {i}/{len(messages)} 条消息，长度: {msg_bytes} 字节")
+            
             if self._send_single_message({
                 "touser": self.touser,
                 "msgtype": "text",

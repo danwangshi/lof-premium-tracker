@@ -404,15 +404,10 @@ def list_funds():
     hdb = get_history_db()
     shares_map = hdb.get_all_latest_shares()
     
-    logger.info(f"[DEBUG] Total items before processing: {len(items)}")
-    
     for item in items:
         code = item.get("code")
         if not code: continue
         
-        if code == '160644':
-            logger.info(f"[DEBUG] Processing 160644, current shares={item.get('shares')}")
-            
         # 1. 如果缓存中没有份额，从数据库补全
         if item.get("shares") is None and code in shares_map:
             share_info = shares_map[code]
@@ -440,20 +435,12 @@ def list_funds():
                     yesterday_share = float(s2) if s2 is not None else 0.0
                     incr_val = round(today_share - yesterday_share, 2)
                     item["shares_incr"] = incr_val
-                    if code == '160644':
-                        logger.info(f"[DEBUG] {code}: Latest={latest['date']}({today_share}), Previous={previous['date']}({yesterday_share}), Incr={incr_val}")
                 else:
                     item["shares_incr"] = 0
-                    if code == '160644':
-                        logger.info(f"[DEBUG] {code}: No different date found")
             else:
                 item["shares_incr"] = 0
-                if code == '160644':
-                    logger.info(f"[DEBUG] {code}: Not enough history (count={len(prev_shares_info)})")
         except Exception as e:
             item["shares_incr"] = 0
-            if code == '160644':
-                logger.error(f"[DEBUG] {code}: Exception: {e}")
     
     if sort_field == "premium_rate":
         items.sort(key=lambda x: x.get("premium_rate") if x.get("premium_rate") is not None else -9999.0, reverse=reverse)
@@ -472,13 +459,6 @@ def list_funds():
 
     total = len(items)
     start = (page - 1) * page_size
-    
-    # 调试：打印第一个基金的 shares_incr
-    if items:
-        first_fund = items[0]
-        logger.info(f"DEBUG: Before _fmt, code={first_fund.get('code')}, shares_incr={first_fund.get('shares_incr')}")
-        formatted = _fmt(first_fund)
-        logger.info(f"DEBUG: After _fmt, shares_incr in result={'shares_incr' in formatted}, value={formatted.get('shares_incr')}")
     
     page_items = [_fmt(f) for f in items[start: start + page_size]]
 
@@ -981,21 +961,16 @@ def init_wework_notifier():
     """初始化企业微信通知器（从环境变量读取配置）"""
     global wework_notifier
     
-    logger.debug("[企微初始化] 开始初始化企业微信通知器")
-    
     try:
         from wework_notifier import create_notifier_from_env
         wework_notifier = create_notifier_from_env()
         
         if wework_notifier:
             logger.info("✅ 企业微信通知器初始化成功")
-            logger.debug(f"[企微初始化] notifier 实例: {wework_notifier}")
         else:
             logger.info("ℹ️  未配置企业微信通知（WEWORK_CORPID等环境变量为空）")
     except Exception as e:
         logger.error(f"初始化企业微信通知器失败: {e}")
-        import traceback
-        logger.debug(traceback.format_exc())
 
 
 def send_shares_update_notification(shares_count: int, date: str):
@@ -1239,14 +1214,8 @@ def manual_wework_notify():
             
             premium_rate = fund.get('premium_rate', 0)
             
-            # 调试日志
-            if fund_code in ['160644', '501225']:
-                logger.info(f"[DEBUG] {fund_code}: purchase_info={purchase_info}, premium_rate={premium_rate}, can_purchase={fund.get('can_purchase')}, is_suspended={_is_suspended(fund)}")
-            
             # 过滤停牌基金（与前端保持一致，使用 _is_suspended 函数判断）
             if _is_suspended(fund):
-                if fund_code in ['160644', '501225']:
-                    logger.info(f"[DEBUG] {fund_code} 被停牌过滤")
                 continue
             
             if premium_rate is None:
@@ -1257,17 +1226,13 @@ def manual_wework_notify():
             
             # 溢价基金
             if rate_percent >= premium_threshold:
-                if fund_code in ['160644', '501225']:
-                    logger.info(f"[DEBUG] {fund_code}: 溢价 {rate_percent}%, purchase_info={purchase_info}")
-                
-                if purchase_info and ('暂停' in purchase_info or '关闭' in purchase_info):
-                    if fund_code in ['160644', '501225']:
-                        logger.info(f"[DEBUG] {fund_code} 被暂停申购过滤")
-                    skipped_count += 1
+                # 过滤停牌基金
+                if _is_suspended(fund):
                     continue
                 
-                if fund_code in ['160644', '501225']:
-                    logger.info(f"[DEBUG] {fund_code} 加入溢价列表")
+                if purchase_info and ('暂停' in purchase_info or '关闭' in purchase_info):
+                    skipped_count += 1
+                    continue
                 
                 premium_funds.append({
                     'code': fund_code,
@@ -1308,7 +1273,7 @@ def manual_wework_notify():
         if premium_funds:
             content += f"🔺 溢价基金 ({len(premium_funds)}只)\n"
             content += "─" * 40 + "\n"
-            for idx, fund in enumerate(premium_funds[:20], 1):  # 最多显示20只
+            for idx, fund in enumerate(premium_funds, 1):  # 显示所有溢价基金
                 # 根据 purchaseInfo 显示不同的状态
                 purchase_info = fund['purchaseInfo']
                 if purchase_info == '暂停申购':
@@ -1327,10 +1292,6 @@ def manual_wework_notify():
                 shares_incr = fund.get('sharesIncr')
                 shares = fund.get('shares')
                 shares_info = ''
-                
-                # 调试日志
-                if idx <= 2:  # 只打印前2只基金的信息
-                    logger.info(f"[DEBUG] {fund['code']}: sharesIncr={shares_incr}, shares={shares}")
                 
                 if shares_incr is not None and shares_incr != 0:
                     # 份额数据单位已经是万份，直接使用
@@ -1373,7 +1334,7 @@ def manual_wework_notify():
         if discount_funds:
             content += f"🔻 折价基金 ({len(discount_funds)}只)\n"
             content += "─" * 40 + "\n"
-            for idx, fund in enumerate(discount_funds[:20], 1):  # 最多显示20只
+            for idx, fund in enumerate(discount_funds, 1):  # 显示所有折价基金
                 # 根据 purchaseInfo 显示不同的状态
                 purchase_info = fund['purchaseInfo']
                 if purchase_info == '暂停申购':
@@ -1392,10 +1353,6 @@ def manual_wework_notify():
                 shares_incr = fund.get('sharesIncr')
                 shares = fund.get('shares')
                 shares_info = ''
-                
-                # 调试日志
-                if idx <= 2:  # 只打印前2只基金的信息
-                    logger.info(f"[DEBUG] {fund['code']}: sharesIncr={shares_incr}, shares={shares}")
                 
                 if shares_incr is not None and shares_incr != 0:
                     # 份额数据单位已经是万份，直接使用
