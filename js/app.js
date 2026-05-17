@@ -1814,8 +1814,12 @@ class LofFundMonitor {
         // 设置 data-tooltip 属性并添加智能定位
         helpIcons.forEach(icon => {
             const helpKey = icon.dataset.help;
+            console.log('[DEBUG] 帮助图标:', helpKey, 'data-help:', icon.dataset.help);
             if (helpContent[helpKey]) {
                 icon.dataset.tooltip = helpContent[helpKey];
+                console.log('[DEBUG] 设置 data-tooltip:', icon.dataset.tooltip.substring(0, 50) + '...');
+            } else {
+                console.warn('[DEBUG] 未找到帮助内容:', helpKey);
             }
 
             // 鼠标悬停时计算最佳显示位置
