@@ -926,17 +926,8 @@ def _scheduled_fetch_shares():
 
 # 初始化定时任务调度器
 scheduler = BackgroundScheduler(timezone='Asia/Shanghai')
-scheduler.add_job(
-    func=_scheduled_fetch_shares,
-    trigger='cron',
-    hour=7,
-    minute=0,
-    id='daily_shares_fetch',
-    name='每日份额数据抓取',
-    replace_existing=True
-)
 scheduler.start()
-logger.info("⏰ 定时任务已启动：每天 07:00 自动抓取份额数据")
+logger.info("⏰ 定时任务调度器已启动")
 
 
 # K线数据播种已改为手动触发: POST /init-kline-history
@@ -999,6 +990,58 @@ def send_shares_update_notification(shares_count: int, date: str):
 
 # 初始化企业微信通知器
 init_wework_notifier()
+
+# 初始化定时任务（支持多个时间）
+def init_wework_schedule():
+    """初始化企业微信定时任务（从环境变量读取配置）"""
+    import os
+    
+    # 从环境变量读取定时时间
+    schedule_times_str = os.getenv('WEWORK_SCHEDULE_TIMES', '07:00').strip()
+    
+    if not schedule_times_str:
+        logger.info("ℹ️  未配置企业微信定时任务时间，使用默认时间 07:00")
+        schedule_times = ['07:00']
+    else:
+        # 解析逗号分隔的时间列表
+        schedule_times = [t.strip() for t in schedule_times_str.split(',')]
+        logger.info(f"✅ 企业微信定时任务时间配置: {', '.join(schedule_times)}")
+    
+    # 为每个时间添加定时任务
+    for time_str in schedule_times:
+        try:
+            # 解析时间格式 HH:MM
+            parts = time_str.split(':')
+            if len(parts) != 2:
+                logger.warning(f"⚠️  时间格式错误: {time_str}，跳过")
+                continue
+            
+            hour = int(parts[0])
+            minute = int(parts[1])
+            
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                logger.warning(f"⚠️  时间超出范围: {time_str}，跳过")
+                continue
+            
+            # 添加定时任务
+            job_id = f'wework_shares_{hour:02d}{minute:02d}'
+            scheduler.add_job(
+                func=_scheduled_fetch_shares,
+                trigger='cron',
+                hour=hour,
+                minute=minute,
+                id=job_id,
+                name=f'企业微信份额数据抓取 ({time_str})',
+                replace_existing=True
+            )
+            
+            logger.info(f"✅ 定时任务已添加: {time_str}")
+            
+        except Exception as e:
+            logger.error(f"❌ 添加定时任务失败 ({time_str}): {e}")
+
+# 初始化定时任务
+init_wework_schedule()
 
 
 # ══════════════════════════════════════════════════════════════════
