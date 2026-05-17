@@ -1077,6 +1077,18 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     transform: translateX(0);
 }
 
+/* 顶部图标：提示框向下显示 */
+.help-icon.tooltip-bottom-show::after {
+    bottom: auto;
+    top: calc(100% + 12px);
+}
+
+.help-icon.tooltip-bottom-show::before {
+    bottom: auto;
+    top: calc(100% + 6px);
+    border-color: #333 transparent transparent transparent;
+}
+
 /* 悬停时显示 */
 .help-icon:hover::before,
 .help-icon:hover::after {
