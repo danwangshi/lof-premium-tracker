@@ -636,6 +636,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .dark-mode .form-select { background: var(--bg); color: var(--text); border-color: var(--border); }
 .dark-mode #purchaseLimitFilter { background: var(--card); color: var(--text); border-color: var(--border); }
 .dark-mode #purchaseLimitFilter option { background: var(--card); color: var(--text); }
+.dark-mode .btn-clear-filter { background: var(--card); color: var(--text2); border-color: var(--border); }
+.dark-mode .btn-clear-filter:hover { background: rgba(231, 76, 60, 0.1); border-color: #e74c3c; color: #e74c3c; }
 .dark-mode .loading-hint { color: var(--text2); }
 /* 详情弹窗 */
 .dark-mode .fund-detail-modal { box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
