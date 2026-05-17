@@ -99,8 +99,9 @@ class AkShareSource(LOFDataSource):
                 continue
 
             price = _safe_float(row.get("最新价"), 0)
+            # 保留停牌基金（price=0），但记录日志
             if price <= 0:
-                continue
+                logger.debug(f"停牌基金: {code} {row.get('名称', '')}")
 
             result[code] = {
                 "code": code,
