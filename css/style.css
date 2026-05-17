@@ -1028,10 +1028,12 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
 /* Tooltip 容器 */
 .help-icon[data-help]::before,
 .help-icon[data-help]::after {
-    display: none;
     position: fixed;
     z-index: 10000;
     pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
 }
 
 /* 悬停时显示 - 必须同时满足 hover 和有位置类 */
@@ -1039,14 +1041,16 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
 .help-icon:hover.tooltip-bottom::before,
 .help-icon:hover.tooltip-left::before,
 .help-icon:hover.tooltip-right::before {
-    display: block;
+    opacity: 1;
+    visibility: visible;
 }
 
 .help-icon:hover.tooltip-top::after,
 .help-icon:hover.tooltip-bottom::after,
 .help-icon:hover.tooltip-left::after,
 .help-icon:hover.tooltip-right::after {
-    display: block;
+    opacity: 1;
+    visibility: visible;
 }
 
 /* Tooltip 箭头 */
