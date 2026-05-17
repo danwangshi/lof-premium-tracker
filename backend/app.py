@@ -927,7 +927,7 @@ _init_thread.start()
 # ══════════════════════════════════════════════════════════════════
 
 def _scheduled_fetch_shares():
-    """定时任务：自动抓取前一天的份额数据"""
+    """定时任务：自动抓取前一天的份额数据（仅早上7点执行）"""
     try:
         from trading_calendar import is_trading_day, get_last_trading_date
         
@@ -954,9 +954,6 @@ def _scheduled_fetch_shares():
         if shares_data:
             saved_count = hdb.save_shares_batch(shares_data, date=last_trading_date)
             logger.info(f"✅ 定时任务：份额数据抓取成功，保存 {saved_count} 条记录")
-            
-            # 发送企业微信通知
-            send_shares_update_notification(saved_count, last_trading_date)
         else:
             logger.warning("⚠️  定时任务：未获取到份额数据")
             
@@ -1034,18 +1031,30 @@ def init_wework_schedule():
         logger.info("ℹ️  企业微信定时任务未启用（WEWORK_SCHEDULE_ENABLED=false）")
         return
     
-    # 从环境变量读取定时时间
-    schedule_times_str = os.getenv('WEWORK_SCHEDULE_TIMES', '07:00').strip()
+    # 1. 每天早上7点固定执行份额数据抓取
+    scheduler.add_job(
+        func=_scheduled_fetch_shares,
+        trigger='cron',
+        hour=7,
+        minute=0,
+        id='wework_shares_0700',
+        name='每日份额数据抓取 (07:00)',
+        replace_existing=True
+    )
+    logger.info("✅ 定时任务已添加: 每日 07:00 份额数据抓取")
+    
+    # 2. 根据 WEWORK_SCHEDULE_TIMES 配置发送基金溢价信息通知
+    schedule_times_str = os.getenv('WEWORK_SCHEDULE_TIMES', '').strip()
     
     if not schedule_times_str:
-        logger.info("ℹ️  未配置企业微信定时任务时间，使用默认时间 07:00")
-        schedule_times = ['07:00']
-    else:
-        # 解析逗号分隔的时间列表
-        schedule_times = [t.strip() for t in schedule_times_str.split(',')]
-        logger.info(f"✅ 企业微信定时任务时间配置: {', '.join(schedule_times)}")
+        logger.info("ℹ️  未配置 WEWORK_SCHEDULE_TIMES，不发送定时溢价通知")
+        return
     
-    # 为每个时间添加定时任务
+    # 解析逗号分隔的时间列表
+    schedule_times = [t.strip() for t in schedule_times_str.split(',')]
+    logger.info(f"✅ 企业微信溢价通知时间配置: {', '.join(schedule_times)}")
+    
+    # 为每个时间添加定时通知任务
     for time_str in schedule_times:
         try:
             # 解析时间格式 HH:MM
@@ -1061,19 +1070,19 @@ def init_wework_schedule():
                 logger.warning(f"⚠️  时间超出范围: {time_str}，跳过")
                 continue
             
-            # 添加定时任务
-            job_id = f'wework_shares_{hour:02d}{minute:02d}'
+            # 添加定时通知任务
+            job_id = f'wework_notify_{hour:02d}{minute:02d}'
             scheduler.add_job(
-                func=_scheduled_fetch_shares,
+                func=lambda: manual_wework_notify(),
                 trigger='cron',
                 hour=hour,
                 minute=minute,
                 id=job_id,
-                name=f'企业微信份额数据抓取 ({time_str})',
+                name=f'企业微信溢价通知 ({time_str})',
                 replace_existing=True
             )
             
-            logger.info(f"✅ 定时任务已添加: {time_str}")
+            logger.info(f"✅ 定时任务已添加: {time_str} 溢价通知")
             
         except Exception as e:
             logger.error(f"❌ 添加定时任务失败 ({time_str}): {e}")
