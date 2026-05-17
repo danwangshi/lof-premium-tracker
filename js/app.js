@@ -1817,6 +1817,11 @@ class LofFundMonitor {
             if (helpContent[helpKey]) {
                 icon.dataset.tooltip = helpContent[helpKey];
             }
+            
+            // 左侧图标（基金总数、缓存数据）使用右对齐提示框
+            if (helpKey === 'totalFunds' || helpKey === 'cacheCount') {
+                icon.classList.add('tooltip-right-align');
+            }
         });
     }
 }

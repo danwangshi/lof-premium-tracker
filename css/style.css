@@ -1047,7 +1047,7 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     border-color: transparent transparent #333 transparent;
 }
 
-/* Tooltip 内容框 */
+/* Tooltip 内容框 - 默认上方居中 */
 .help-icon::after {
     content: attr(data-tooltip);
     bottom: calc(100% + 12px);
@@ -1064,6 +1064,17 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     min-width: 280px;
     text-align: left;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* 左侧图标：提示框右对齐 */
+.help-icon.tooltip-right-align::after {
+    left: 0;
+    transform: translateX(0);
+}
+
+.help-icon.tooltip-right-align::before {
+    left: 8px;
+    transform: translateX(0);
 }
 
 /* 悬停时显示 */
