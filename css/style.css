@@ -1006,76 +1006,63 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     font-size: 0.85rem;
     opacity: 0.6;
     transition: opacity 0.2s;
+    position: relative;
 }
 .help-icon:hover {
     opacity: 1;
 }
 
-.help-tooltip {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-}
-
-.help-tooltip-content {
-    background: var(--card);
-    border-radius: 12px;
-    padding: 24px;
-    max-width: 500px;
-    width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-    position: relative;
-}
-
-.dark-mode .help-tooltip-content {
-    background: #1a2a3a;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-}
-
-.help-tooltip-close {
+/* Tooltip 容器 */
+.help-icon[data-help]::before,
+.help-icon[data-help]::after {
+    display: none;
     position: absolute;
-    top: 12px;
-    right: 16px;
-    font-size: 1.5rem;
-    color: var(--text2);
-    cursor: pointer;
-    transition: color 0.2s;
+    z-index: 10000;
+    pointer-events: none;
 }
 
-.help-tooltip-close:hover {
-    color: var(--text);
+/* Tooltip 箭头 */
+.help-icon[data-help]::before {
+    content: '';
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 6px;
+    border-style: solid;
+    border-color: transparent transparent #333 transparent;
+    margin-bottom: -1px;
 }
 
-.help-tooltip-content h4 {
-    font-size: 1.1rem;
-    margin-bottom: 12px;
-    color: var(--primary);
+/* Tooltip 内容框 */
+.help-icon[data-help]::after {
+    content: attr(data-tooltip);
+    bottom: calc(100% + 12px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    white-space: pre-line;
+    max-width: 350px;
+    text-align: left;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-.help-tooltip-content p {
-    font-size: 0.9rem;
-    line-height: 1.6;
-    margin-bottom: 10px;
-    color: var(--text);
+/* 悬停时显示 */
+.help-icon:hover::before,
+.help-icon:hover::after {
+    display: block;
 }
 
-.help-tooltip-content ul {
-    margin-left: 20px;
-    margin-bottom: 10px;
+/* 深色模式适配 */
+.dark-mode .help-icon[data-help]::before {
+    border-color: transparent transparent #1a2a3a transparent;
 }
 
-.help-tooltip-content li {
-    font-size: 0.9rem;
-    line-height: 1.6;
-    margin-bottom: 6px;
-    color: var(--text);
+.dark-mode .help-icon[data-help]::after {
+    background: #1a2a3a;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
