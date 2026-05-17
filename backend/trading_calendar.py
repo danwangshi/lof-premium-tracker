@@ -56,8 +56,23 @@ def get_last_trading_date() -> str:
         sse_calendar = xcals.get_calendar("XSHG")
         today = pd.Timestamp(datetime.now().date())
         
-        # 获取上一个交易日（新版 API）
-        last_session = sse_calendar.previous_session(today)
+        # 获取上一个交易日（兼容不同版本的 API）
+        try:
+            # 尝试使用 previous_session 方法
+            last_session = sse_calendar.previous_session(today)
+        except (TypeError, ValueError) as e:
+            # 如果 previous_session 失败，使用 session_label 方法
+            logger.debug(f"[交易日判断] previous_session 失败: {e}，尝试其他方法")
+            # 获取所有交易日，找到最后一个小于今天的日期
+            sessions = sse_calendar.sessions_in_range(
+                pd.Timestamp('2020-01-01'),
+                today - pd.Timedelta(days=1)
+            )
+            if len(sessions) > 0:
+                last_session = sessions[-1]
+            else:
+                raise Exception("无法获取交易日列表")
+        
         last_trading_date = last_session.strftime('%Y-%m-%d')
         
         logger.info(f"[交易日判断] 上一个交易日: {last_trading_date}")
