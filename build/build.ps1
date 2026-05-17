@@ -6,11 +6,11 @@ param(
 )
 
 # 配置
-$ImageName = "lof-fund-app"
+$ImageName = "danwangshi/lof-fund-app"
 $ImageTag = $Version
 $FullImageName = "${ImageName}:${ImageTag}"
 $ExportDir = "docker/images"
-$ExportFile = "${ExportDir}/${ImageName}-${ImageTag}.tar"
+$ExportFile = "${ExportDir}/danwangshi-lof-fund-app-${ImageTag}.tar"
 
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  Docker 构建和导出脚本" -ForegroundColor Green
@@ -38,8 +38,8 @@ try {
         throw "Docker Compose build failed"
     }
     
-    # 重新标记镜像
-    docker tag lof-fund-app:latest $FullImageName
+    # 重新标记镜像（确保标签正确）
+    docker tag danwangshi/lof-fund-app:latest $FullImageName
 } catch {
     Write-Host "Docker Compose 构建失败，尝试直接使用 Dockerfile..." -ForegroundColor Yellow
     docker build -f build/Dockerfile -t $FullImageName .
@@ -106,5 +106,8 @@ Write-Host "使用以下命令加载镜像:" -ForegroundColor Yellow
 Write-Host "  docker load -i $CompressedFile"
 Write-Host ""
 Write-Host "使用以下命令运行容器:" -ForegroundColor Yellow
-Write-Host "  docker compose -f docker/docker-compose.yml up -d"
+Write-Host "  cd docker"
+Write-Host "  cp .env.example .env"
+Write-Host "  # 编辑 .env 文件，修改数据库密码"
+Write-Host "  docker compose up -d"
 Write-Host ""

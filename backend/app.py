@@ -36,6 +36,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("lof-api")
 
+# 抑制 urllib3 和 charset_normalizer 的 DEBUG 日志，只显示 WARNING 及以上
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+logging.getLogger('charset_normalizer').setLevel(logging.WARNING)
+
 # ─────────────────────────────────────────────
 # Flask 应用
 # ─────────────────────────────────────────────
@@ -61,6 +66,11 @@ def err_resp(message, code=1, status=400, details=None):
     if details:
         payload["details"] = details
     return jsonify(payload), status
+
+
+def error(message, status=400):
+    """简化错误响应"""
+    return err_resp(message, status=status)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -181,6 +191,35 @@ def js_files(filename):
 def assets_files(filename):
     return send_from_directory(os.path.join(BASE_DIR, "assets"), filename)
 
+@app.route("/favicon.ico")
+def favicon():
+    """返回网站图标，避免 404 错误"""
+    return send_from_directory(os.path.join(BASE_DIR, "assets"), "icon.jpg", mimetype="image/jpeg")
+
+
+# ══════════════════════════════════════════════════════════════════
+# 静态文件服务
+# ══════════════════════════════════════════════════════════════════
+
+import os
+
+@app.route('/pages/<path:filename>')
+def serve_pages(filename):
+    """服务 pages 目录下的静态 HTML 文件"""
+    pages_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'pages')
+    return send_from_directory(pages_dir, filename)
+
+@app.route('/css/<path:filename>')
+def serve_css(filename):
+    """服务 css 目录下的样式文件"""
+    css_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'css')
+    return send_from_directory(css_dir, filename)
+
+@app.route('/js/<path:filename>')
+def serve_js(filename):
+    """服务 js 目录下的脚本文件"""
+    js_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'js')
+    return send_from_directory(js_dir, filename)
 
 # ══════════════════════════════════════════════════════════════════
 # API 路由
@@ -945,22 +984,21 @@ def init_wework_notifier():
     """初始化企业微信通知器（从环境变量读取配置）"""
     global wework_notifier
     
+    logger.debug("[企微初始化] 开始初始化企业微信通知器")
+    
     try:
         from wework_notifier import create_notifier_from_env
         wework_notifier = create_notifier_from_env()
         
         if wework_notifier:
             logger.info("✅ 企业微信通知器初始化成功")
-            
-            # 发送启动通知
-            wework_notifier.send_system_notification(
-                "LOF基金监控系统已启动",
-                f"服务已正常启动\n时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            )
+            logger.debug(f"[企微初始化] notifier 实例: {wework_notifier}")
         else:
             logger.info("ℹ️  未配置企业微信通知（WEWORK_CORPID等环境变量为空）")
     except Exception as e:
         logger.error(f"初始化企业微信通知器失败: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
 
 
 def send_shares_update_notification(shares_count: int, date: str):
@@ -975,14 +1013,8 @@ def send_shares_update_notification(shares_count: int, date: str):
         return
     
     try:
-        content = (
-            f"份额数据更新完成\n"
-            f"日期: {date}\n"
-            f"基金数量: {shares_count} 只\n"
-            f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-        
-        wework_notifier.send_system_notification("份额数据更新", content)
+        # 使用新的通知格式（与 lof_project2 保持一致）
+        wework_notifier.send_shares_update_notification(shares_count, date)
         logger.info("企业微信通知发送成功")
     except Exception as e:
         logger.error(f"发送企业微信通知失败: {e}")
@@ -1057,7 +1089,7 @@ init_wework_schedule()
 @app.route("/api/wework/notify", methods=["POST"])
 def manual_wework_notify():
     """
-    手动触发企业微信通知（测试用）
+    手动触发企业微信通知（发送基金日报）
     
     Returns:
         JSON响应
@@ -1066,21 +1098,354 @@ def manual_wework_notify():
         return error("企业微信未配置", 400)
     
     try:
-        # 获取请求参数
-        data = request.get_json() or {}
-        title = data.get('title', '测试通知')
-        content = data.get('content', '这是一条测试消息')
+        # 先触发懒刷新，确保使用最新数据
+        _trigger_lazy_refresh()
         
-        # 发送通知
-        success = wework_notifier.send_system_notification(title, content)
+        # 等待一下让刷新完成（最多等待10秒）
+        import time
+        f = get_fetcher()
+        wait_count = 0
+        while wait_count < 20:  # 最多等待20*0.5=10秒
+            # 检查最后更新时间，如果最近30秒内更新过，说明数据已就绪
+            if f.last_fetch_time:
+                from datetime import datetime, timezone
+                age = (datetime.now(timezone.utc) - f.last_fetch_time).total_seconds()
+                if age < 30:  # 数据在30秒内更新过
+                    break
+            time.sleep(0.5)
+            wait_count += 1
+        
+        # 获取最新的基金数据
+        all_data = f.get_all()
+        
+        # get_all() 返回的是 {code: fund_info, ...} 格式
+        if isinstance(all_data, dict):
+            realtime_data = list(all_data.values())
+        else:
+            realtime_data = all_data
+        
+        if not realtime_data:
+            return error("无法获取基金数据", 500)
+        
+        # 确保所有基金都有 shares_incr 和 shares 字段
+        # 从数据库中补全份额数据
+        from history_db import HistoryDB
+        hdb = HistoryDB()
+        
+        # 获取所有基金的份额数据（最近7天）
+        shares_map = {}
+        for fund in realtime_data:
+            code = fund.get('code')
+            if code:
+                try:
+                    shares_info = hdb.get_shares_by_code(code, days=7)
+                    if shares_info:
+                        latest = shares_info[0]
+                        shares_map[code] = {
+                            'shares': latest.get('shares'),
+                            'date': latest.get('date'),
+                            'source': latest.get('source')
+                        }
+                except Exception:
+                    pass
+        
+        # 补全份额数据和计算新增份额
+        for fund in realtime_data:
+            code = fund.get('code')
+            if not code:
+                continue
+            
+            # 1. 如果缓存中没有份额，从数据库补全
+            if fund.get('shares') is None and code in shares_map:
+                share_info = shares_map[code]
+                fund['shares'] = share_info.get('shares')
+                fund['shares_date'] = share_info.get('date')
+                fund['shares_source'] = share_info.get('source')
+            
+            # 2. 统一计算新增份额（对比上一个不同日期的数据）
+            try:
+                prev_shares_info = hdb.get_shares_by_code(code, days=7)
+                if len(prev_shares_info) >= 2:
+                    latest = prev_shares_info[0]
+                    # 找到第一个与最新日期不同的记录
+                    previous = None
+                    for record in prev_shares_info[1:]:
+                        if record.get('date') != latest.get('date'):
+                            previous = record
+                            break
+                    
+                    if previous:
+                        s1 = latest.get('shares', 0)
+                        s2 = previous.get('shares', 0)
+                        today_share = float(s1) if s1 is not None else 0.0
+                        yesterday_share = float(s2) if s2 is not None else 0.0
+                        incr_val = round(today_share - yesterday_share, 2)
+                        fund['shares_incr'] = incr_val
+                    else:
+                        fund['shares_incr'] = 0
+                else:
+                    fund['shares_incr'] = 0
+            except Exception:
+                fund['shares_incr'] = 0
+        
+        # 从环境变量读取阈值（默认值：溢价 5%，折价 3%）
+        import os
+        try:
+            premium_threshold = float(os.getenv('WEWORK_PREMIUM_THRESHOLD', '5.0'))
+        except ValueError:
+            premium_threshold = 5.0
+        
+        try:
+            discount_threshold = float(os.getenv('WEWORK_DISCOUNT_THRESHOLD', '3.0'))
+        except ValueError:
+            discount_threshold = 3.0
+        
+        logger.info(f"[企业微信] 使用阈值 - 溢价: ≥{premium_threshold}%, 折价: ≤-{discount_threshold}%")
+        
+        # 筛选溢价和折价基金
+        premium_funds = []
+        discount_funds = []
+        skipped_count = 0
+        
+        for fund in realtime_data:
+            # 调试日志
+            if not isinstance(fund, dict):
+                logger.error(f"基金数据格式错误: {type(fund)} = {fund}")
+                continue
+            
+            fund_code = fund.get('code', '')
+            fund_name = fund.get('name', '')
+            
+            # 获取申购状态
+            can_purchase = fund.get('can_purchase')
+            purchase_limit = fund.get('purchase_limit')
+            
+            # 如果 can_purchase 为 False，说明暂停申购
+            if can_purchase is False:
+                purchase_info = '暂停申购'
+            elif purchase_limit is not None:
+                purchase_info = str(purchase_limit)
+            else:
+                purchase_info = '开放申购'
+            
+            premium_rate = fund.get('premium_rate', 0)
+            
+            # 调试日志
+            if fund_code in ['160644', '501225']:
+                logger.info(f"[DEBUG] {fund_code}: purchase_info={purchase_info}, premium_rate={premium_rate}, can_purchase={fund.get('can_purchase')}, is_suspended={_is_suspended(fund)}")
+            
+            # 过滤停牌基金（与前端保持一致，使用 _is_suspended 函数判断）
+            if _is_suspended(fund):
+                if fund_code in ['160644', '501225']:
+                    logger.info(f"[DEBUG] {fund_code} 被停牌过滤")
+                continue
+            
+            if premium_rate is None:
+                continue
+            
+            # premium_rate 已经是百分比值（如 5.0 表示 5%），不需要再乘以 100
+            rate_percent = premium_rate
+            
+            # 溢价基金
+            if rate_percent >= premium_threshold:
+                if fund_code in ['160644', '501225']:
+                    logger.info(f"[DEBUG] {fund_code}: 溢价 {rate_percent}%, purchase_info={purchase_info}")
+                
+                if purchase_info and ('暂停' in purchase_info or '关闭' in purchase_info):
+                    if fund_code in ['160644', '501225']:
+                        logger.info(f"[DEBUG] {fund_code} 被暂停申购过滤")
+                    skipped_count += 1
+                    continue
+                
+                if fund_code in ['160644', '501225']:
+                    logger.info(f"[DEBUG] {fund_code} 加入溢价列表")
+                
+                premium_funds.append({
+                    'code': fund_code,
+                    'name': fund_name,
+                    'rate': rate_percent,
+                    'type': '溢价',
+                    'purchaseInfo': purchase_info,
+                    'sharesIncr': fund.get('shares_incr'),
+                    'shares': fund.get('shares')
+                })
+            # 折价基金
+            elif rate_percent <= -discount_threshold:
+                discount_funds.append({
+                    'code': fund_code,
+                    'name': fund_name,
+                    'rate': rate_percent,
+                    'type': '折价',
+                    'purchaseInfo': purchase_info,
+                    'sharesIncr': fund.get('shares_incr'),
+                    'shares': fund.get('shares')
+                })
+        
+        # 按绝对值排序
+        premium_funds.sort(key=lambda x: x['rate'], reverse=True)
+        discount_funds.sort(key=lambda x: abs(x['rate']), reverse=True)
+        
+        # 构建报告内容
+        from datetime import datetime
+        current_date = datetime.now().strftime('%Y-%m-%d')
+        current_time = datetime.now().strftime('%H:%M')
+        
+        content = f"📊 LOF基金日报 ({current_date} {current_time})\n"
+        content += "━━━━━━━━━━━━━━━━━━━━━━\n"
+        content += f"溢价阈值: ≥{premium_threshold}% | 折价阈值: ≤-{discount_threshold}%\n"
+        content += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        # 溢价基金部分
+        if premium_funds:
+            content += f"🔺 溢价基金 ({len(premium_funds)}只)\n"
+            content += "─" * 40 + "\n"
+            for idx, fund in enumerate(premium_funds[:20], 1):  # 最多显示20只
+                # 根据 purchaseInfo 显示不同的状态
+                purchase_info = fund['purchaseInfo']
+                if purchase_info == '暂停申购':
+                    purchase_status = '❌暂停'
+                elif purchase_info and purchase_info.replace('.', '').isdigit():
+                    # 是数字，显示限购金额
+                    limit_value = float(purchase_info)
+                    if limit_value >= 10000:
+                        purchase_status = f'限购{int(limit_value/10000)}万'
+                    else:
+                        purchase_status = f'限购{int(limit_value)}元'
+                else:
+                    purchase_status = '✅开放'
+                
+                # 格式化新增份额
+                shares_incr = fund.get('sharesIncr')
+                shares = fund.get('shares')
+                shares_info = ''
+                
+                # 调试日志
+                if idx <= 2:  # 只打印前2只基金的信息
+                    logger.info(f"[DEBUG] {fund['code']}: sharesIncr={shares_incr}, shares={shares}")
+                
+                if shares_incr is not None and shares_incr != 0:
+                    # 份额数据单位已经是万份，直接使用
+                    incr_wan = shares_incr
+                    # 计算百分比变化
+                    incr_rate_text = ''
+                    if shares is not None:
+                        # 兼容 Decimal 类型
+                        yesterday_shares = float(shares) - shares_incr  # 昨日份额 = 当前份额 - 新增份额
+                        if yesterday_shares > 0:
+                            rate = (shares_incr / yesterday_shares * 100)
+                            if rate >= 0:
+                                incr_rate_text = f'(+{rate:.0f}%)'
+                            else:
+                                incr_rate_text = f'({rate:.0f}%)'
+                    
+                    # 根据数值大小决定显示格式
+                    if abs(incr_wan) >= 1:
+                        # 大于等于1万，显示整数
+                        if incr_wan >= 0:
+                            shares_info = f' 📈+{incr_wan:.0f}万{incr_rate_text}'
+                        else:
+                            shares_info = f' 📉{incr_wan:.0f}万{incr_rate_text}'
+                    else:
+                        # 小于1万，显示一位小数
+                        if incr_wan >= 0:
+                            shares_info = f' 📈+{incr_wan:.1f}万{incr_rate_text}'
+                        else:
+                            shares_info = f' 📉{incr_wan:.1f}万{incr_rate_text}'
+                
+                content += f"{idx}. {fund['code']} {fund['name']}\n"
+                content += f"   溢价 {fund['rate']:.2f}% {purchase_status}{shares_info}\n"
+            content += "\n"
+        else:
+            content += f"🔺 溢价基金: 无\n\n"
+        
+        content += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        # 折价基金部分
+        if discount_funds:
+            content += f"🔻 折价基金 ({len(discount_funds)}只)\n"
+            content += "─" * 40 + "\n"
+            for idx, fund in enumerate(discount_funds[:20], 1):  # 最多显示20只
+                # 根据 purchaseInfo 显示不同的状态
+                purchase_info = fund['purchaseInfo']
+                if purchase_info == '暂停申购':
+                    purchase_status = '❌暂停'
+                elif purchase_info and purchase_info.replace('.', '').isdigit():
+                    # 是数字，显示限购金额
+                    limit_value = float(purchase_info)
+                    if limit_value >= 10000:
+                        purchase_status = f'限购{int(limit_value/10000)}万'
+                    else:
+                        purchase_status = f'限购{int(limit_value)}元'
+                else:
+                    purchase_status = '✅开放'
+                
+                # 格式化新增份额
+                shares_incr = fund.get('sharesIncr')
+                shares = fund.get('shares')
+                shares_info = ''
+                
+                # 调试日志
+                if idx <= 2:  # 只打印前2只基金的信息
+                    logger.info(f"[DEBUG] {fund['code']}: sharesIncr={shares_incr}, shares={shares}")
+                
+                if shares_incr is not None and shares_incr != 0:
+                    # 份额数据单位已经是万份，直接使用
+                    incr_wan = shares_incr
+                    # 计算百分比变化
+                    incr_rate_text = ''
+                    if shares is not None:
+                        # 兼容 Decimal 类型
+                        yesterday_shares = float(shares) - shares_incr  # 昨日份额 = 当前份额 - 新增份额
+                        if yesterday_shares > 0:
+                            rate = (shares_incr / yesterday_shares * 100)
+                            if rate >= 0:
+                                incr_rate_text = f'(+{rate:.0f}%)'
+                            else:
+                                incr_rate_text = f'({rate:.0f}%)'
+                    
+                    # 根据数值大小决定显示格式
+                    if abs(incr_wan) >= 1:
+                        # 大于等于1万，显示整数
+                        if incr_wan >= 0:
+                            shares_info = f' 📈+{incr_wan:.0f}万{incr_rate_text}'
+                        else:
+                            shares_info = f' 📉{incr_wan:.0f}万{incr_rate_text}'
+                    else:
+                        # 小于1万，显示一位小数
+                        if incr_wan >= 0:
+                            shares_info = f' 📈+{incr_wan:.1f}万{incr_rate_text}'
+                        else:
+                            shares_info = f' 📉{incr_wan:.1f}万{incr_rate_text}'
+                
+                content += f"{idx}. {fund['code']} {fund['name']}\n"
+                content += f"   折价 {abs(fund['rate']):.2f}% {purchase_status}{shares_info}\n"
+            content += "\n"
+        else:
+            content += f"🔻 折价基金: 无\n\n"
+        
+        # 总结
+        total_count = len(premium_funds) + len(discount_funds)
+        content += "━━━━━━━━━━━━━━━━━━━━━━\n"
+        content += f"合计: {total_count}只 (溢价{len(premium_funds)}只 + 折价{len(discount_funds)}只)\n"
+        content += "⚠️ 数据仅供参考，投资需谨慎"
+        
+        # 发送消息
+        success = wework_notifier.send_text_message(content)
         
         if success:
-            return ok({"message": "通知发送成功"})
+            logger.info(f"[企业微信] 每日报告发送成功")
+            logger.info(f"   - 溢价基金: {len(premium_funds)} 只")
+            logger.info(f"   - 折价基金: {len(discount_funds)} 只")
+            logger.info(f"   - 跳过暂停申购: {skipped_count} 只")
+            logger.info(f"   - 总计通知: {total_count} 只")
+            return ok({"message": "基金日报发送成功", "count": total_count})
         else:
             return error("通知发送失败", 500)
             
     except Exception as e:
-        logger.error(f"手动发送通知失败: {e}")
+        logger.error(f"手动发送基金日报失败: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
         return error(f"发送失败: {str(e)}", 500)
 
 

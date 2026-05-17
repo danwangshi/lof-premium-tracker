@@ -17,11 +17,45 @@
 
 ---
 
+## ⚖️ 版权与归属声明
+
+### 原项目引用
+
+本项目基于 **[MistyBridge/lof-premium-tracker](https://github.com/MistyBridge/lof-premium-tracker)** 进行独立开发与功能扩展。
+
+**原项目核心功能权益归原作者 MistyBridge 所有：**
+- LOF 基金实时监控引擎架构设计
+- 分级数据源适配层（AKShare 主源 + Legacy 后备）
+- 基础溢价率计算与展示逻辑
+- 前端页面框架与基础交互设计
+- 后端 API 服务架构
+- 历史数据快照机制
+
+### 新增功能权益
+
+**本人在原项目基础上新增的功能，其知识产权归本人（danwangshi）所有：**
+- 📊 **场内份额数据集成** - 上交所/深交所份额数据抓取、存储与展示
+- 📈 **新增份额变化追踪** - 对比不同日期份额数据，计算并展示新增份额
+- 🔍 **申购限额筛选系统** - 支持多选筛选（暂停申购/开放申购/具体限额）
+- 📉 **365天历史图表扩展** - 支持七日/一月/三月/六月/一年多维度切换
+- ⏰ **定时任务调度系统** - APScheduler 集成的自动化份额数据抓取
+- 💾 **PostgreSQL 数据库集成** - 历史数据持久化存储与自动清理机制
+- 🎨 **Chart.js 图表预渲染** - 热门基金图表缓存优化
+- 🛡️ **用户协议与隐私政策** - 完整的法律合规文档
+
+### 使用授权
+
+本项目整体遵循 **GNU Affero General Public License v3.0 (AGPL-3.0)** 开源协议。
+
+- **原项目代码**：遵循 AGPL-3.0 协议，版权归 MistyBridge 所有
+- **新增功能代码**：遵循 AGPL-3.0 协议，版权归 danwangshi 所有
+- **整体项目**：任何商业使用、二次修改后集成至商业产品，须同时获得原作者与本作者书面授权许可
+
+> **免责声明**：本项目为个人开发者独立运营的免费非盈利工具，无任何商业目的。本站数据仅供参考，不构成任何投资建议，如有损失与本项目无关。详见 [用户协议](pages/agreement.html) 和 [隐私政策](pages/privacy.html)。
+
 ## 关于本项目
 
 金快查是一款专注 **LOF 基金折溢价监控** 的开源工具，面向个人投资者与量化爱好者。
-
-本项目基于 [MistyBridge/lof-premium-tracker](https://github.com/MistyBridge/lof-premium-tracker) 进行协作开发，在原有功能基础上新增了场内份额追踪、申购限额筛选、365天历史图表等核心功能。
 
 > **LOF 基金**（Listed Open-Ended Fund，上市型开放式基金）同时存在场内交易价格和场外基金净值，二者偏差即为折溢价。当溢价率足够覆盖交易成本时，投资者可通过 **申购→卖出** 或 **买入→赎回** 进行套利操作。
 
@@ -306,8 +340,8 @@ git push origin main
 
 | 贡献者 | GitHub | 主要贡献 |
 |--------|--------|----------|
-| MistyBridge | [@MistyBridge](https://github.com/MistyBridge) | 项目创始人，核心架构设计，LOF 实时监控引擎 |
-| danwangshi | [@danwangshi](https://github.com/danwangshi) | 场内份额数据集成，申购限额筛选，历史图表扩展，定时任务系统 |
+| MistyBridge | [@MistyBridge](https://github.com/MistyBridge) | **原项目创始人**，核心架构设计，LOF 实时监控引擎，分级数据源策略 |
+| danwangshi | [@danwangshi](https://github.com/danwangshi) | **独立开发者**，场内份额数据集成，申购限额筛选，历史图表扩展，定时任务系统，PostgreSQL 数据库集成 |
 
 欢迎更多开发者参与贡献！详见 [开发指南](docs/DEVELOPMENT.md)。
 
@@ -317,6 +351,12 @@ git push origin main
 
 本项目基于 **GNU Affero General Public License v3.0 (AGPL-3.0)** 开源。
 
-> 仅供个人学习与非商业场景免费使用。任何企业、组织机构及个人用于商业运营、私有化部署、二次修改后集成至商业产品及服务，均须提前获得作者书面授权许可。
+### 版权归属说明
 
-Copyright © 2026 [MistyBridge](https://github.com/MistyBridge)
+- **原项目核心功能**：版权归 [MistyBridge](https://github.com/MistyBridge) 所有
+- **新增功能模块**：版权归 [danwangshi](https://github.com/danwangshi) 所有
+- **整体项目使用**：须同时遵循 AGPL-3.0 协议，并获得双方书面授权（如用于商业用途）
+
+> **仅供个人学习与非商业场景免费使用**。任何企业、组织机构及个人用于商业运营、私有化部署、二次修改后集成至商业产品及服务，均须提前获得原作者与新作者双方书面授权许可。
+
+Copyright © 2026 [MistyBridge](https://github.com/MistyBridge) & [danwangshi](https://github.com/danwangshi)

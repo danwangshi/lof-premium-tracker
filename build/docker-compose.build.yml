@@ -6,7 +6,7 @@ services:
     build:
       context: ..
       dockerfile: build/Dockerfile
-    image: lof-fund-app:latest
+    image: danwangshi/lof-fund-app:latest
     container_name: lof-app-build
     # 仅用于构建，不运行
     command: echo "Build complete"

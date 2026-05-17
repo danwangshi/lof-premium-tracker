@@ -15,11 +15,14 @@
     // 解决中国网络访问Railway美国节点被阻断的问题
     const DEFAULT_CONFIG = {
         // 后端API地址
-        // 生产：使用CF Pages同源代理（无需CORS，无跨域）
+        // 生产/Docker：使用Nginx反向代理（同源请求）
+        // 本地开发：直接连接Flask后端（端口5000）
         // 可通过URL参数临时切换：?api=https://xxx
         API_BASE_URL: isLocalDev 
-            ? 'http://localhost:5000' 
-            : window.location.origin,  // 同源，无跨域问题
+            ? (window.location.port === '5000'
+                ? 'http://localhost:5000'  // 本地开发环境，直接访问 Flask
+                : window.location.origin)  // Docker环境，通过Nginx代理（任意端口）
+            : window.location.origin,  // 生产环境，同源
         
         // 数据刷新间隔（毫秒）- 前端1.5分钟轮询
         REFRESH_INTERVAL: 90 * 1000,

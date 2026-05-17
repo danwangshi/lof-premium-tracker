@@ -5,9 +5,9 @@
 
 class LofApiService {
     constructor() {
-        // 使用全局配置
+        // 使用全局配置（由 config.js 提供）
         this.config = window.LOF_CONFIG || { 
-            API_BASE_URL: 'http://localhost:5000',
+            API_BASE_URL: '',  // 空字符串表示使用相对路径（同源请求）
             REQUEST_TIMEOUT: 30000,
             RETRY_COUNT: 3,
             RETRY_INTERVAL: 3000,

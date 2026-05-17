@@ -60,7 +60,7 @@ docker compose -f build/docker-compose.build.yml build
 
 ```bash
 # 构建镜像
-docker build -f build/Dockerfile -t lof-fund-app:latest .
+docker build -f build/Dockerfile -t danwangshi/lof-fund-app:latest .
 ```
 
 ### 2. 运行容器
@@ -71,29 +71,29 @@ docker build -f build/Dockerfile -t lof-fund-app:latest .
 
 ```bash
 # 从压缩文件加载
-docker load -i docker/images/lof-fund-app-latest.tar.gz
+docker load -i docker/images/danwangshi-lof-fund-app-latest.tar.gz
 ```
 
 **启动服务：**
 
 ```bash
-# 使用 docker-compose（推荐）
-docker compose -f docker/docker-compose.yml up -d
+# 进入 docker 目录
+cd docker
 
-# 或单独运行
-docker run -d \
-  --name lof-app \
-  -p 5000:5000 \
-  -e DB_HOST=postgres \
-  -e DB_PASSWORD=postgres123 \
-  lof-fund-app
+# 配置环境变量
+cp .env.example .env
+# 编辑 .env 文件，修改数据库密码
+nano .env
+
+# 启动服务
+docker compose up -d
 ```
 
 ### 3. 访问应用
 
-- **Web 界面**: http://localhost:5000
-- **健康检查**: http://localhost:5000/health
-- **API 文档**: http://localhost:5000/api/funds
+- **Web 界面**: http://localhost
+- **健康检查**: http://localhost/health
+- **API 接口**: http://localhost/api/funds
 
 ---
 
@@ -126,17 +126,17 @@ docker run -d \
 
 ```bash
 # 导出为 tar 文件
-docker save lof-fund-app -o docker/images/lof-fund-app.tar
+docker save danwangshi/lof-fund-app -o docker/images/danwangshi-lof-fund-app.tar
 
 # 压缩
-gzip docker/images/lof-fund-app.tar
+gzip docker/images/danwangshi-lof-fund-app.tar
 ```
 
 ### 导入镜像
 
 ```bash
 # 从 tar 文件加载
-docker load -i docker/images/lof-fund-app.tar.gz
+docker load -i docker/images/danwangshi-lof-fund-app.tar.gz
 ```
 
 ### 清理镜像
@@ -146,7 +146,7 @@ docker load -i docker/images/lof-fund-app.tar.gz
 docker image prune -a
 
 # 删除指定镜像
-docker rmi lof-fund-app
+docker rmi danwangshi/lof-fund-app
 ```
 
 ---
@@ -157,10 +157,10 @@ docker rmi lof-fund-app
 
 ```bash
 # 清除缓存重新构建
-docker build -f build/Dockerfile --no-cache -t lof-fund-app .
+docker build -f build/Dockerfile --no-cache -t danwangshi/lof-fund-app .
 
 # 查看详细日志
-docker build -f build/Dockerfile --progress=plain -t lof-fund-app .
+docker build -f build/Dockerfile --progress=plain -t danwangshi/lof-fund-app .
 ```
 
 ### 网络连接问题
@@ -172,7 +172,7 @@ docker build -f build/Dockerfile --progress=plain -t lof-fund-app .
    ```bash
    export HTTP_PROXY=http://proxy:port
    export HTTPS_PROXY=http://proxy:port
-   docker build -f build/Dockerfile -t lof-fund-app .
+   docker build -f build/Dockerfile -t danwangshi/lof-fund-app .
    ```
 
 ---

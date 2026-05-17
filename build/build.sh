@@ -11,11 +11,11 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # 配置
-IMAGE_NAME="lof-fund-app"
+IMAGE_NAME="danwangshi/lof-fund-app"
 IMAGE_TAG="${1:-latest}"
 FULL_IMAGE_NAME="${IMAGE_NAME}:${IMAGE_TAG}"
 EXPORT_DIR="docker/images"
-EXPORT_FILE="${EXPORT_DIR}/${IMAGE_NAME}-${IMAGE_TAG}.tar"
+EXPORT_FILE="${EXPORT_DIR}/${IMAGE_NAME//\//-}-${IMAGE_TAG}.tar"
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Docker 构建和导出脚本${NC}"
@@ -39,7 +39,7 @@ docker compose -f build/docker-compose.build.yml build || \
 docker build -f build/Dockerfile -t "${FULL_IMAGE_NAME}" .
 
 # 重新标记镜像（确保标签正确）
-docker tag lof-fund-app:latest "${FULL_IMAGE_NAME}" 2>/dev/null || true
+docker tag danwangshi/lof-fund-app:latest "${FULL_IMAGE_NAME}" 2>/dev/null || true
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}错误: 镜像构建失败${NC}"
@@ -84,5 +84,8 @@ echo -e "${YELLOW}使用以下命令加载镜像:${NC}"
 echo -e "  docker load -i ${COMPRESSED_FILE}"
 echo ""
 echo -e "${YELLOW}使用以下命令运行容器:${NC}"
-echo -e "  docker compose -f docker/docker-compose.yml up -d"
+echo -e "  cd docker"
+echo -e "  cp .env.example .env"
+echo -e "  # 编辑 .env 文件，修改数据库密码"
+echo -e "  docker compose up -d"
 echo ""

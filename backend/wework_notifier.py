@@ -177,7 +177,7 @@ class WeWorkNotifier:
     
     def send_system_notification(self, title: str, content: str) -> bool:
         """
-        发送系统通知
+        发送系统通知（使用纯文本格式，兼容个人微信）
         
         Args:
             title: 通知标题
@@ -188,12 +188,33 @@ class WeWorkNotifier:
         """
         # 使用纯文本格式，兼容个人微信
         message = (
-            f"【{title}】\n\n"
+            f"📢 {title}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"{content}\n\n"
-            f"时间: {self._get_current_time()}"
+            f"⏰ 时间: {self._get_current_time()}"
         )
         
         return self.send_text_message(message)
+    
+    def send_shares_update_notification(self, saved_count: int, date: str) -> bool:
+        """
+        发送份额数据更新通知
+        
+        Args:
+            saved_count: 保存的记录数
+            date: 数据日期
+            
+        Returns:
+            发送成功返回True，失败返回False
+        """
+        title = "✅ 份额数据抓取完成"
+        content = (
+            f"📅 数据日期: {date}\n"
+            f"📊 记录数量: {saved_count} 条\n\n"
+            f"💡 提示: 数据已成功保存到数据库"
+        )
+        
+        return self.send_system_notification(title, content)
     
     @staticmethod
     def _get_current_time() -> str:
@@ -217,12 +238,14 @@ def create_notifier_from_env() -> Optional[WeWorkNotifier]:
     
     # 检查企微通知是否启用
     enabled = os.getenv('WEWORK_ENABLED', 'false').strip().lower()
+    logger.debug(f"[企微配置] WEWORK_ENABLED={enabled}")
     if enabled not in ('true', '1', 'yes'):
         logger.info("ℹ️  企业微信通知未启用（WEWORK_ENABLED=false）")
         return None
     
     # 读取 WEWORK_CONFIG 配置
     wework_config = os.getenv('WEWORK_CONFIG', '').strip()
+    logger.debug(f"[企微配置] WEWORK_CONFIG={'已配置' if wework_config else '未配置'}")
     
     if not wework_config:
         logger.warning("未配置 WEWORK_CONFIG 环境变量")
@@ -230,6 +253,7 @@ def create_notifier_from_env() -> Optional[WeWorkNotifier]:
     
     # 解析逗号分隔的配置
     parts = [p.strip() for p in wework_config.split(',')]
+    logger.debug(f"[企微配置] 解析到 {len(parts)} 个参数")
     
     if len(parts) < 4:
         logger.warning(f"WEWORK_CONFIG 格式错误，至少需要4个参数 (corpid,corpsecret,touser,agentid): {wework_config}")
@@ -241,6 +265,7 @@ def create_notifier_from_env() -> Optional[WeWorkNotifier]:
     agentid = parts[3]
     msgtype = parts[4] if len(parts) > 4 else 'text'
     
+    logger.debug(f"[企微配置] corpid={corpid}, agentid={agentid}, touser={touser}, msgtype={msgtype}")
     logger.info("✅ 从 WEWORK_CONFIG 加载企业微信配置成功")
     
     return WeWorkNotifier(
