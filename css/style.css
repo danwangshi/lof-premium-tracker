@@ -1030,7 +1030,7 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     color: #357abd;
 }
 
-.qq-group {
+.github-link {
     background: #f0f7ff;
     border: 1px solid #d0e3ff;
     border-radius: 10px;
@@ -1039,12 +1039,12 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     text-align: center;
 }
 
-.qq-group strong {
+.github-link strong {
     color: #4a90d9;
     font-size: 1.05rem;
 }
 
-.dark-mode .qq-group {
+.dark-mode .github-link {
     background: #1a2a48;
     border-color: #2a3f5f;
 }
