@@ -25,11 +25,8 @@ class LofFundMonitor {
         this.purchaseDiscount = parseFloat(localStorage.getItem('lof_purchaseDiscount')) || 0.1; // 申购费率折扣，默认一折
         // 深色模式（从 localStorage 恢复，默认浅色）
         this.darkMode = localStorage.getItem('lof_darkMode') || 'light';
-        // 用户协议同意状态
-        this.hasAgreedToTerms = localStorage.getItem('lof_agreed_to_terms') === 'true';
         this.bindEvents();
         this.applyDarkMode(false); // 不保存，仅应用
-        this.initWelcomeModal(); // 初始化欢迎弹窗
         this.init();
     }
 
@@ -56,6 +53,8 @@ class LofFundMonitor {
                 this.showError(false);
                 this.showLoading(false);
                 this.updateStatus('');
+                // 欢迎弹窗 — 首次访问，页面加载完毕后再弹出
+                this._showWelcome();
                 return; // 成功则退出
             } catch (error) {
                 retries++;
@@ -864,46 +863,22 @@ class LofFundMonitor {
         });
     }
 
-    // ===== 欢迎弹窗 =====
-    initWelcomeModal() {
-        // 如果用户已经同意过，则直接隐藏弹窗
-        if (this.hasAgreedToTerms) {
-            const modal = document.getElementById('welcomeModal');
-            if (modal) modal.style.display = 'none';
-            return;
+    // ===== 欢迎弹窗（原仓库版本）=====
+    _showWelcome() {
+        try {
+            if (sessionStorage.getItem('jkc_welcome_shown')) return;
+            sessionStorage.setItem('jkc_welcome_shown', '1');
+            const overlay = document.getElementById('welcomeOverlay');
+            const agreeBtn = document.getElementById('welcomeAgreeBtn');
+            if (overlay && agreeBtn) {
+                overlay.classList.remove('hidden');
+                agreeBtn.addEventListener('click', () => {
+                    overlay.classList.add('hidden');
+                }, { once: true });
+            }
+        } catch (e) {
+            // sessionStorage may be blocked in some browsers
         }
-
-        // 显示欢迎弹窗
-        const modal = document.getElementById('welcomeModal');
-        if (modal) modal.style.display = 'flex';
-        
-        // 阻止背景滚动
-        document.body.style.overflow = 'hidden';
-
-        // 绑定同意按钮
-        const agreeBtn = document.getElementById('agreeBtn');
-        if (agreeBtn) {
-            agreeBtn.addEventListener('click', () => {
-                this.agreeToTerms();
-            });
-        }
-
-        // 点击弹窗外部不关闭（必须点击同意按钮）
-    }
-
-    agreeToTerms() {
-        // 保存同意状态
-        localStorage.setItem('lof_agreed_to_terms', 'true');
-        this.hasAgreedToTerms = true;
-
-        // 隐藏弹窗
-        const modal = document.getElementById('welcomeModal');
-        if (modal) modal.style.display = 'none';
-        
-        // 恢复背景滚动
-        document.body.style.overflow = '';
-
-        console.log('用户已同意用户协议和隐私政策');
     }
 
     // ===== 深色模式 =====
