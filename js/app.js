@@ -156,6 +156,12 @@ class LofFundMonitor {
             
             // 构建 API URL
             let url = `${api.baseUrl}/api/funds?page=1&page_size=600`;
+            
+            // 添加停牌筛选参数
+            if (this.showSuspended) {
+                url += '&suspended=1';
+            }
+            
             if (selectedLimits.length > 0) {
                 selectedLimits.forEach(limit => {
                     url += `&purchase_limit=${limit}`;
@@ -171,9 +177,8 @@ class LofFundMonitor {
             }
             // 保存原始数据总数（过滤前）
             const totalFromApi = result.data.length;
-            // 过滤停牌、无溢价率的基金（不再过滤暂停申购）
+            // 只过滤无溢价率的基金（停牌由后端控制）
             this.funds = result.data.filter(fund => {
-                if (fund.is_suspended) return false;
                 if (fund.premium_rate === null || fund.premium_rate === undefined) return false;
                 return true;
             });
