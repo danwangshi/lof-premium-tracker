@@ -954,6 +954,10 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     backdrop-filter: blur(4px);
 }
 
+.welcome-overlay.hidden {
+    display: none;
+}
+
 .welcome-modal {
     background: var(--card);
     border-radius: 20px;
