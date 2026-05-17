@@ -938,200 +938,37 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     font-family: 'Arial', sans-serif;
 }
 
-/* ===== 首次访问欢迎弹窗 ===== */
-.welcome-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    backdrop-filter: blur(4px);
-}
+/* ===== 欢迎弹窗 ===== */
+.welcome-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.55); z-index: 10000; display: flex; align-items: safe center; justify-content: center; padding: 24px 0; }
+.welcome-overlay.hidden { display: none; }
+.welcome-modal { background: var(--card); border-radius: 16px; max-width: 520px; width: 95%; max-height: calc(100vh - 48px); overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); overscroll-behavior: contain; }
+.welcome-header { background: linear-gradient(135deg, #1890ff, #096dd9); padding: 30px 28px; border-radius: 16px 16px 0 0; text-align: center; color: #fff; }
+.welcome-header h2 { font-size: 1.5rem; margin-bottom: 4px; }
+.welcome-sub { font-size: 0.85rem; opacity: 0.85; }
+.welcome-body { padding: 24px 28px; }
+.welcome-section { margin-bottom: 18px; }
+.welcome-section:last-child { margin-bottom: 0; }
+.welcome-section h3 { font-size: 0.95rem; color: var(--text); margin-bottom: 8px; }
+.welcome-section p { font-size: 0.85rem; color: var(--text2); line-height: 1.8; }
+.welcome-qq { display: inline-flex; align-items: center; gap: 6px; background: #f0f7ff; border: 1px solid #b3d8ff; border-radius: 8px; padding: 8px 14px; color: #1890ff; font-weight: 600; font-size: 0.9rem; text-decoration: none; transition: background 0.2s; }
+.welcome-qq:hover { background: #e6f3ff; }
+.welcome-footer { padding: 16px 28px 24px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.welcome-agree { width: 100%; padding: 12px; background: #1890ff; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+.welcome-agree:hover { background: #096dd9; }
+.welcome-remind { font-size: 0.72rem; color: var(--text2); text-align: center; }
+.welcome-modal::-webkit-scrollbar { width: 5px; }
+.welcome-modal::-webkit-scrollbar-track { background: transparent; }
+.welcome-modal::-webkit-scrollbar-thumb { background: #c0c4cc; border-radius: 3px; }
+.welcome-modal::-webkit-scrollbar-thumb:hover { background: #909399; }
+.dark-mode .welcome-modal::-webkit-scrollbar-thumb { background: #3a4a6a; }
+.dark-mode .welcome-modal::-webkit-scrollbar-thumb:hover { background: #556688; }
+.dark-mode .welcome-qq { background: #1a2a4a; border-color: #334466; color: #4a90d9; }
 
-.welcome-overlay.hidden {
-    display: none;
-}
-
-.welcome-modal {
-    background: var(--card);
-    border-radius: 20px;
-    max-width: 560px;
-    width: 100%;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    animation: welcome-fadein 0.3s ease;
-}
-
-@keyframes welcome-fadein {
-    from { opacity: 0; transform: translateY(30px) scale(0.95); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.welcome-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 32px 24px;
-    text-align: center;
-    border-radius: 20px 20px 0 0;
-}
-
-.welcome-header h2 {
-    font-size: 1.8rem;
-    margin: 0 0 8px 0;
-    font-weight: 700;
-}
-
-.welcome-header h2 strong {
-    color: #FFD700;
-}
-
-.welcome-subtitle {
-    margin: 0;
-    opacity: 0.95;
-    font-size: 0.95rem;
-}
-
-.welcome-body {
-    padding: 24px;
-}
-
-.welcome-section {
-    margin-bottom: 20px;
-}
-
-.welcome-section:last-child {
-    margin-bottom: 0;
-}
-
-.welcome-section h3 {
-    font-size: 1.1rem;
-    color: var(--text);
-    margin: 0 0 12px 0;
-    font-weight: 600;
-}
-
-.welcome-section p {
-    color: var(--text2);
-    line-height: 1.8;
-    margin: 8px 0;
-    font-size: 0.95rem;
-}
-
-.welcome-section a {
-    color: #4a90d9;
-    text-decoration: underline;
-    transition: color 0.2s;
-}
-
-.welcome-section a:hover {
-    color: #357abd;
-}
-
-.github-link {
-    background: #f0f7ff;
-    border: 1px solid #d0e3ff;
-    border-radius: 10px;
-    padding: 12px 16px;
-    margin-top: 12px;
-    text-align: center;
-}
-
-.github-link strong {
-    color: #4a90d9;
-    font-size: 1.05rem;
-}
-
-.dark-mode .github-link {
-    background: #1a2a48;
-    border-color: #2a3f5f;
-}
-
-.welcome-footer {
-    padding: 20px 24px 24px;
-    text-align: center;
-    border-top: 1px solid var(--border);
-}
-
-.btn-agree {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    padding: 14px 48px;
-    font-size: 1.1rem;
-    font-weight: 600;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.3s;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-}
-
-.btn-agree:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
-}
-
-.btn-agree:active {
-    transform: translateY(0);
-}
-
-.agree-hint {
-    margin: 12px 0 0 0;
-    font-size: 0.85rem;
-    color: var(--text2);
-}
-
-/* 移动端适配 */
-@media (max-width: 768px) {
-    .welcome-overlay {
-        padding: 0;
-        align-items: flex-end;
-    }
-    
-    .welcome-modal {
-        max-width: 100%;
-        max-height: 85vh;
-        border-radius: 20px 20px 0 0;
-        animation: welcome-slideup 0.3s ease;
-    }
-    
-    @keyframes welcome-slideup {
-        from { opacity: 0; transform: translateY(100%); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    
-    .welcome-header {
-        padding: 24px 20px;
-    }
-    
-    .welcome-header h2 {
-        font-size: 1.5rem;
-    }
-    
-    .welcome-body {
-        padding: 20px;
-    }
-    
-    .welcome-section h3 {
-        font-size: 1rem;
-    }
-    
-    .welcome-section p {
-        font-size: 0.9rem;
-    }
-    
-    .welcome-footer {
-        padding: 16px 20px 20px;
-    }
-    
-    .btn-agree {
-        width: 100%;
-        padding: 14px 24px;
-    }
+@media (max-width: 600px) {
+    .welcome-overlay { padding: 0; align-items: flex-end; }
+    .welcome-modal { max-width: 100%; width: 100%; border-radius: 20px 20px 0 0; margin-bottom: 0; max-height: 92vh; }
+    .welcome-header { padding: 24px 20px; border-radius: 20px 20px 0 0; }
+    .welcome-header h2 { font-size: 1.3rem; }
+    .welcome-body { padding: 18px 16px; }
+    .welcome-footer { padding: 12px 16px 20px; }
 }
