@@ -157,11 +157,6 @@ class LofFundMonitor {
             // 构建 API URL
             let url = `${api.baseUrl}/api/funds?page=1&page_size=600`;
             
-            // 添加停牌筛选参数
-            if (this.showSuspended) {
-                url += '&suspended=1';
-            }
-            
             if (selectedLimits.length > 0) {
                 selectedLimits.forEach(limit => {
                     url += `&purchase_limit=${limit}`;

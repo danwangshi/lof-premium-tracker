@@ -366,11 +366,11 @@ def list_funds():
         all_data = {k: v for k, v in all_data.items()
                     if (v.get("premium_rate") or 0) < 0}
 
-    # ── 停牌筛选 ──
-    show_suspended = request.args.get("suspended", "0")
-    if show_suspended != "1":
-        all_data = {k: v for k, v in all_data.items()
-                    if not _is_suspended(v)}
+    # ── 停牌筛选（已移至前端处理，后端始终返回全部数据） ──
+    # show_suspended = request.args.get("suspended", "0")
+    # if show_suspended != "1":
+    #     all_data = {k: v for k, v in all_data.items()
+    #                 if not _is_suspended(v)}
 
     # ── 申购限额筛选（支持多选） ──
     purchase_limits = request.args.getlist("purchase_limit")
