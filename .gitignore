@@ -39,3 +39,7 @@ logs/
 *.tmp
 *.temp
 .cache/
+
+# 导出的文档（由 export_docs.py 生成）
+docs/exports/*.docx
+docs/exports/*.pdf
