@@ -890,13 +890,37 @@ _init_thread.start()
 def _scheduled_fetch_shares():
     """定时任务：自动抓取前一天的份额数据"""
     try:
+        from trading_calendar import is_trading_day, get_last_trading_date
+        
+        # 检查今天是否为交易日
+        if not is_trading_day():
+            logger.info("⏰ 定时任务：今天是非交易日，跳过份额数据抓取")
+            return
+        
         logger.info("⏰ 定时任务触发：开始抓取份额数据")
-        from auto_fetch_shares import fetch_and_save_shares
-        success = fetch_and_save_shares()
-        if success:
-            logger.info("✅ 定时任务：份额数据抓取成功")
+        
+        # 获取上一个交易日的日期
+        last_trading_date = get_last_trading_date()
+        logger.info(f"将抓取 {last_trading_date} 的份额数据")
+        
+        # 从交易所 API 获取份额数据
+        from datasource.share_source import ExchangeShareSource
+        from history_db import get_history_db
+        
+        share_source = ExchangeShareSource()
+        hdb = get_history_db()
+        
+        shares_data = share_source.fetch_all_shares(date=last_trading_date)
+        
+        if shares_data:
+            saved_count = hdb.save_shares_batch(shares_data, date=last_trading_date)
+            logger.info(f"✅ 定时任务：份额数据抓取成功，保存 {saved_count} 条记录")
+            
+            # 发送企业微信通知
+            send_shares_update_notification(saved_count, last_trading_date)
         else:
-            logger.info("ℹ️  定时任务：非交易日，跳过保存")
+            logger.warning("⚠️  定时任务：未获取到份额数据")
+            
     except Exception as e:
         logger.error(f"❌ 定时任务：份额数据抓取失败: {e}")
 
@@ -917,6 +941,98 @@ logger.info("⏰ 定时任务已启动：每天 07:00 自动抓取份额数据")
 
 # K线数据播种已改为手动触发: POST /init-kline-history
 # 避免部署时因长耗时健康检查超时导致失败
+
+
+# ══════════════════════════════════════════════════════════════════
+# 企业微信通知功能
+# ══════════════════════════════════════════════════════════════════
+
+# 全局变量：企业微信通知器实例
+wework_notifier = None
+
+def init_wework_notifier():
+    """初始化企业微信通知器（从环境变量读取配置）"""
+    global wework_notifier
+    
+    try:
+        from wework_notifier import create_notifier_from_env
+        wework_notifier = create_notifier_from_env()
+        
+        if wework_notifier:
+            logger.info("✅ 企业微信通知器初始化成功")
+            
+            # 发送启动通知
+            wework_notifier.send_system_notification(
+                "LOF基金监控系统已启动",
+                f"服务已正常启动\n时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        else:
+            logger.info("ℹ️  未配置企业微信通知（WEWORK_CORPID等环境变量为空）")
+    except Exception as e:
+        logger.error(f"初始化企业微信通知器失败: {e}")
+
+
+def send_shares_update_notification(shares_count: int, date: str):
+    """
+    发送份额更新通知
+    
+    Args:
+        shares_count: 更新的基金数量
+        date: 数据日期
+    """
+    if not wework_notifier:
+        return
+    
+    try:
+        content = (
+            f"份额数据更新完成\n"
+            f"日期: {date}\n"
+            f"基金数量: {shares_count} 只\n"
+            f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        
+        wework_notifier.send_system_notification("份额数据更新", content)
+        logger.info("企业微信通知发送成功")
+    except Exception as e:
+        logger.error(f"发送企业微信通知失败: {e}")
+
+
+# 初始化企业微信通知器
+init_wework_notifier()
+
+
+# ══════════════════════════════════════════════════════════════════
+# API：手动触发企业微信通知
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/wework/notify", methods=["POST"])
+def manual_wework_notify():
+    """
+    手动触发企业微信通知（测试用）
+    
+    Returns:
+        JSON响应
+    """
+    if not wework_notifier:
+        return error("企业微信未配置", 400)
+    
+    try:
+        # 获取请求参数
+        data = request.get_json() or {}
+        title = data.get('title', '测试通知')
+        content = data.get('content', '这是一条测试消息')
+        
+        # 发送通知
+        success = wework_notifier.send_system_notification(title, content)
+        
+        if success:
+            return ok({"message": "通知发送成功"})
+        else:
+            return error("通知发送失败", 500)
+            
+    except Exception as e:
+        logger.error(f"手动发送通知失败: {e}")
+        return error(f"发送失败: {str(e)}", 500)
 
 
 # ══════════════════════════════════════════════════════════════════
