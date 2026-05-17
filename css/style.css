@@ -1000,16 +1000,29 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
 
 /* 帮助提示样式 */
 .help-icon {
-    display: inline-block;
-    margin-left: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid #aaa;
+    background: transparent;
+    color: #888;
+    font-size: 11px;
+    font-weight: bold;
     cursor: help;
-    font-size: 0.85rem;
-    opacity: 0.6;
-    transition: opacity 0.2s;
+    margin-left: 4px;
+    vertical-align: middle;
+    line-height: 1;
+    padding: 0;
+    transition: all 0.15s;
     position: relative;
 }
 .help-icon:hover {
-    opacity: 1;
+    border-color: var(--primary);
+    color: var(--primary);
+    background: #f0f4ff;
 }
 
 /* Tooltip 容器 */
@@ -1058,6 +1071,17 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
 }
 
 /* 深色模式适配 */
+.dark-mode .help-icon {
+    border-color: #555;
+    color: #888;
+}
+
+.dark-mode .help-icon:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: #1a2a48;
+}
+
 .dark-mode .help-icon[data-help]::before {
     border-color: transparent transparent #1a2a3a transparent;
 }
