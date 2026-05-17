@@ -209,15 +209,22 @@ class ExchangeShareSource:
         获取深交所LOF份额数据
         
         Args:
-            date: 查询日期（YYYY-MM-DD格式），默认为昨天
+            date: 查询日期（YYYY-MM-DD格式），默认为上一个交易日
             max_pages: 最大页数（每页20条）
             
         Returns:
             清洗后的份额数据列表
         """
         if date is None:
-            # 默认使用上一个交易日（T-1日）
-            date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            # 使用上一个交易日（T-1日），避免周末/节假日无数据
+            try:
+                from trading_calendar import get_last_trading_date
+                date = get_last_trading_date()
+                logger.info(f"使用上一个交易日: {date}")
+            except ImportError:
+                # 如果交易日历不可用，回退到昨天
+                date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+                logger.warning(f"交易日历不可用，使用昨天: {date}")
         
         logger.info(f"开始获取深交所LOF份额数据（日期: {date}）...")
         all_data = []
