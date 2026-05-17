@@ -19,7 +19,6 @@ class LofFundMonitor {
         this.avgThreshold = parseFloat(localStorage.getItem('lof_avgThreshold')) || 0;
         this.minAmount = parseFloat(localStorage.getItem('lof_minAmount')) || 0;
         this.showSuspended = localStorage.getItem('lof_showSuspended_v2') === '1';
-        this.showUnpurchasable = localStorage.getItem('lof_showUnpurchasable_v2') === '1';
         // 预计收益计算参数（从 localStorage 恢复或用默认值）
         this.commissionRate = parseFloat(localStorage.getItem('lof_commissionRate')) || 1.5;  // 万X
         this.commissionMin = parseFloat(localStorage.getItem('lof_commissionMin')) || 5;      // 元
@@ -350,9 +349,6 @@ class LofFundMonitor {
         let filtered = [...this.funds];
         if (!this.showSuspended) {
             filtered = filtered.filter(fund => !fund.is_suspended);
-        }
-        if (!this.showUnpurchasable) {
-            filtered = filtered.filter(fund => fund.can_purchase !== false);
         }
         if (this.searchKeyword) {
             const keyword = this.searchKeyword.toLowerCase();
@@ -924,12 +920,10 @@ class LofFundMonitor {
         const commissionMinInput = document.getElementById('commissionMinInput');
         const maxCapitalInput = document.getElementById('maxCapitalInput');
         const purchaseDiscountInput = document.getElementById('purchaseDiscountInput');
-        const unpurchasableCheck = document.getElementById('showUnpurchasableCheck');
         const suspendedCheck = document.getElementById('showSuspendedCheck');
         if (thresholdInput) thresholdInput.value = this.threshold || 0;
         if (avgThresholdInput) avgThresholdInput.value = this.avgThreshold || 0;
         if (minAmountInput) minAmountInput.value = this.minAmount || 0;
-        if (unpurchasableCheck) unpurchasableCheck.checked = this.showUnpurchasable;
         if (suspendedCheck) suspendedCheck.checked = this.showSuspended;
         if (commissionRateInput) commissionRateInput.value = this.commissionRate;
         if (commissionMinInput) commissionMinInput.value = this.commissionMin;
@@ -953,18 +947,15 @@ class LofFundMonitor {
         const commissionMinInput = document.getElementById('commissionMinInput');
         const maxCapitalInput = document.getElementById('maxCapitalInput');
         const purchaseDiscountInput = document.getElementById('purchaseDiscountInput');
-        const unpurchasableCheck = document.getElementById('showUnpurchasableCheck');
         const suspendedCheck = document.getElementById('showSuspendedCheck');
         this.threshold = parseFloat(thresholdInput?.value) || 0;
         this.avgThreshold = parseFloat(avgThresholdInput?.value) || 0;
         this.minAmount = parseFloat(minAmountInput?.value) || 0;
-        this.showUnpurchasable = unpurchasableCheck?.checked || false;
         this.showSuspended = suspendedCheck?.checked || false;
         this.commissionRate = parseFloat(commissionRateInput?.value) || 1.5;
         this.commissionMin = parseFloat(commissionMinInput?.value) || 5;
         this.maxCapital = parseFloat(maxCapitalInput?.value) || 1000;
         this.purchaseDiscount = parseFloat(purchaseDiscountInput?.value) || 0.1;
-        localStorage.setItem('lof_showUnpurchasable_v2', this.showUnpurchasable ? '1' : '0');
         localStorage.setItem('lof_showSuspended_v2', this.showSuspended ? '1' : '0');
         // 保存所有设置到 localStorage（扩展记忆功能）
         localStorage.setItem('lof_threshold', this.threshold);
@@ -995,12 +986,10 @@ class LofFundMonitor {
         const commissionMinInput = document.getElementById('commissionMinInput');
         const maxCapitalInput = document.getElementById('maxCapitalInput');
         const purchaseDiscountInput = document.getElementById('purchaseDiscountInput');
-        const unpurchasableCheck = document.getElementById('showUnpurchasableCheck');
         const suspendedCheck = document.getElementById('showSuspendedCheck');
         if (thresholdInput) thresholdInput.value = 0;
         if (avgThresholdInput) avgThresholdInput.value = 0;
         if (minAmountInput) minAmountInput.value = 0;
-        if (unpurchasableCheck) unpurchasableCheck.checked = false;
         if (suspendedCheck) suspendedCheck.checked = false;
         if (commissionRateInput) commissionRateInput.value = 1.5;
         if (commissionMinInput) commissionMinInput.value = 5;
