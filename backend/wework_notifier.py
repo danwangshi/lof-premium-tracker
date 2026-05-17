@@ -206,67 +206,41 @@ def create_notifier_from_env() -> Optional[WeWorkNotifier]:
     """
     从环境变量创建通知器
     
-    支持两种配置方式：
-    1. WEWORK_CONFIG: corpid,corpsecret,touser,agentid,msgtype(可选)
-    2. 独立环境变量: WEWORK_CORPID, WEWORK_CORPSECRET, WEWORK_AGENTID, WEWORK_TOUSER
+    配置格式：WEWORK_CONFIG=corpid,corpsecret,touser,agentid,msgtype(可选)
+    示例：WEWORK_CONFIG=wwcfrs,B-76WERQ,qinglong,1000001,text
+    多个接收人用|隔开：user1|user2|user3
     
     Returns:
         WeWorkNotifier实例，配置不完整返回None
     """
     import os
     
-    # 优先使用 WEWORK_CONFIG 格式
+    # 读取 WEWORK_CONFIG 配置
     wework_config = os.getenv('WEWORK_CONFIG', '').strip()
     
-    if wework_config:
-        # 解析逗号分隔的配置
-        parts = [p.strip() for p in wework_config.split(',')]
-        
-        if len(parts) < 4:
-            logger.warning(f"WEWORK_CONFIG 格式错误，至少需要4个参数: {wework_config}")
-            return None
-        
-        corpid = parts[0]
-        corpsecret = parts[1]
-        touser = parts[2]
-        agentid = parts[3]
-        msgtype = parts[4] if len(parts) > 4 else 'text'
-        
-        logger.info("从 WEWORK_CONFIG 加载企业微信配置成功")
-        
-        return WeWorkNotifier(
-            corpid=corpid,
-            corpsecret=corpsecret,
-            agentid=agentid,
-            touser=touser,
-            msgtype=msgtype
-        )
-    
-    # 降级到独立环境变量方式
-    corpid = os.getenv('WEWORK_CORPID', '').strip()
-    corpsecret = os.getenv('WEWORK_CORPSECRET', '').strip()
-    agentid = os.getenv('WEWORK_AGENTID', '').strip()
-    touser = os.getenv('WEWORK_TOUSER', '').strip()
-    
-    # 检查必需的配置项
-    required = {
-        'WEWORK_CORPID': corpid,
-        'WEWORK_CORPSECRET': corpsecret,
-        'WEWORK_AGENTID': agentid,
-        'WEWORK_TOUSER': touser
-    }
-    
-    missing = [k for k, v in required.items() if not v]
-    if missing:
-        logger.warning(f"企业微信配置缺少必要参数: {', '.join(missing)}")
+    if not wework_config:
+        logger.warning("未配置 WEWORK_CONFIG 环境变量")
         return None
     
-    logger.info("从独立环境变量加载企业微信配置成功")
+    # 解析逗号分隔的配置
+    parts = [p.strip() for p in wework_config.split(',')]
+    
+    if len(parts) < 4:
+        logger.warning(f"WEWORK_CONFIG 格式错误，至少需要4个参数 (corpid,corpsecret,touser,agentid): {wework_config}")
+        return None
+    
+    corpid = parts[0]
+    corpsecret = parts[1]
+    touser = parts[2]
+    agentid = parts[3]
+    msgtype = parts[4] if len(parts) > 4 else 'text'
+    
+    logger.info("从 WEWORK_CONFIG 加载企业微信配置成功")
     
     return WeWorkNotifier(
         corpid=corpid,
         corpsecret=corpsecret,
         agentid=agentid,
         touser=touser,
-        msgtype='text'
+        msgtype=msgtype
     )
