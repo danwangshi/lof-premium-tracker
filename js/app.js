@@ -525,9 +525,13 @@ class LofFundMonitor {
             purchaseLimitText = '开放申购';
         }
 
+        const nameHtml = fund.is_suspended 
+            ? `<div class="fund-name-wrapper"><span>${this.truncateName(fund.name)}</span><span class="suspended-badge">停牌</span></div>`
+            : this.truncateName(fund.name);
+
         return `<tr class="fund-row" data-code="${fund.code}">
             <td class="col-code">${fund.code}</td>
-            <td class="col-name" title="${fund.name}">${this.truncateName(fund.name)}</td>
+            <td class="col-name" title="${fund.name}">${nameHtml}</td>
             <td class="col-price">${priceText}</td>
             <td class="col-nav">${navText}</td>
             <td class="col-change ${changeClass}">${changeText}</td>
