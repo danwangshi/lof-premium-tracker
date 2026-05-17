@@ -51,6 +51,7 @@ class LofFundMonitor {
                 await this.loadPurchaseLimits();  // 加载申购限额选项
                 await this.loadFunds();
                 this.startAutoRefresh();
+                this.initHelpTooltip();  // 初始化帮助提示
                 this.showError(false);
                 this.showLoading(false);
                 this.updateStatus('');
@@ -1777,6 +1778,80 @@ class LofFundMonitor {
             hour: '2-digit', minute: '2-digit',
             timeZone: 'Asia/Shanghai',
         });
+    }
+
+    // 帮助提示功能
+    initHelpTooltip() {
+        const helpIcons = document.querySelectorAll('.help-icon');
+        const tooltip = document.getElementById('helpTooltip');
+        const closeBtn = document.getElementById('helpTooltipClose');
+        const titleEl = document.getElementById('helpTooltipTitle');
+        const bodyEl = document.getElementById('helpTooltipBody');
+
+        const helpContent = {
+            totalFunds: {
+                title: '📊 基金总数',
+                content: `
+                    <p><strong>含义：</strong>后端 API 返回的原始基金总数（包含所有基金）</p>
+                    <p><strong>数据来源：</strong>从交易所获取的全部 LOF 基金列表</p>
+                    <p><strong>当前值：</strong>553 只基金</p>
+                    <p><strong>注意：</strong>此数字包含停牌、无溢价率数据的基金</p>
+                `
+            },
+            cacheCount: {
+                title: '💾 缓存数据',
+                content: `
+                    <p><strong>含义：</strong>后端内存中缓存的基金数量</p>
+                    <p><strong>数据来源：</strong>Flask 应用的内存缓存</p>
+                    <p><strong>刷新机制：</strong>每 5 分钟自动更新一次</p>
+                    <p><strong>说明：</strong>正常情况下应与“基金总数”一致</p>
+                `
+            },
+            pagination: {
+                title: '📄 显示条数说明',
+                content: `
+                    <p><strong>共 X 条：</strong>经过前端过滤后的基金总数</p>
+                    <ul>
+                        <li>移除了 15 只无溢价率数据的基金（553 - 538 = 15）</li>
+                        <li>根据筛选设置进一步过滤（溢价率阈值、成交额等）</li>
+                        <li>如果取消“显示停牌基金”，会再过滤掉约 169 只停牌基金</li>
+                    </ul>
+                    <p><strong>显示 X-Y 条：</strong>当前页显示的基金范围</p>
+                    <p><strong>示例：</strong>“显示 1-50 条，共 538 条”表示第 1 页显示前 50 只基金，总共 538 只符合筛选条件</p>
+                `
+            }
+        };
+
+        // 点击问号图标显示帮助
+        helpIcons.forEach(icon => {
+            icon.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const helpKey = icon.dataset.help;
+                const help = helpContent[helpKey];
+                
+                if (help) {
+                    titleEl.textContent = help.title;
+                    bodyEl.innerHTML = help.content;
+                    tooltip.style.display = 'flex';
+                }
+            });
+        });
+
+        // 关闭按钮
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                tooltip.style.display = 'none';
+            });
+        }
+
+        // 点击背景关闭
+        if (tooltip) {
+            tooltip.addEventListener('click', (e) => {
+                if (e.target === tooltip) {
+                    tooltip.style.display = 'none';
+                }
+            });
+        }
     }
 }
 

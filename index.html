@@ -41,7 +41,7 @@
     <link rel="icon" type="image/jpeg" href="assets/icon.jpg">
     <link rel="apple-touch-icon" href="assets/icon.jpg">
     
-    <link rel="stylesheet" href="css/style.css?v=2">
+    <link rel="stylesheet" href="css/style.css?v=3">
 </head>
 <body>
     <div class="container">
@@ -91,8 +91,8 @@
                 <div class="panel status-panel">
                     <h3 class="panel-title">📊 数据状态</h3>
                     <div class="status-grid">
-                        <div class="status-item"><span class="status-label">基金总数</span><span id="totalFunds" class="status-value">-</span></div>
-                        <div class="status-item"><span class="status-label">缓存数据</span><span id="cacheCount" class="status-value">-</span></div>
+                        <div class="status-item"><span class="status-label">基金总数<span class="help-icon" data-help="totalFunds">❓</span></span><span id="totalFunds" class="status-value">-</span></div>
+                        <div class="status-item"><span class="status-label">缓存数据<span class="help-icon" data-help="cacheCount">❓</span></span><span id="cacheCount" class="status-value">-</span></div>
                         <div class="status-item"><span class="status-label">最后更新</span><span id="lastFetch" class="status-value">-</span></div>
                         <div class="status-item"><span class="status-label">刷新间隔</span><span id="refreshInterval" class="status-value">-</span></div>
                     </div>
@@ -118,7 +118,7 @@
                         <div class="search-box"><input type="text" id="searchInput" placeholder="🔍 代码/名称"><button id="settingsBtn" class="btn-settings" title="设置筛选阈值">⚙️ 设置</button></div>
                     </div>
                     <div class="toolbar-right">
-                        <div class="pagination-info">显示 <span id="shownRecords">-</span> 条，共 <span id="totalRecords">-</span> 条</div>
+                        <div class="pagination-info">显示 <span id="shownRecords">-</span> 条，共 <span id="totalRecords">-</span> 条 <span class="help-icon" data-help="pagination">❓</span></div>
                         <div class="filter-box">
                             <select id="purchaseLimitFilter" multiple size="1" title="按住 Ctrl/Cmd 多选申购限额">
                                 <option value="">申购限额...</option>
@@ -376,9 +376,18 @@
         </div>
     </div>
 
+    <!-- 帮助提示弹窗 -->
+    <div id="helpTooltip" class="help-tooltip" style="display:none">
+        <div class="help-tooltip-content">
+            <div class="help-tooltip-close" id="helpTooltipClose">&times;</div>
+            <h4 id="helpTooltipTitle"></h4>
+            <div id="helpTooltipBody"></div>
+        </div>
+    </div>
+
     <script src="js/config.js?v=4"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="js/api.js?v=4"></script>
-    <script src="js/app.js?v=6"></script>
+    <script src="js/app.js?v=7"></script>
 </body>
 </html>
