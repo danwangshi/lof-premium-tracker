@@ -1034,6 +1034,21 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     pointer-events: none;
 }
 
+/* 悬停时显示 - 必须同时满足 hover 和有位置类 */
+.help-icon:hover.tooltip-top::before,
+.help-icon:hover.tooltip-bottom::before,
+.help-icon:hover.tooltip-left::before,
+.help-icon:hover.tooltip-right::before {
+    display: block;
+}
+
+.help-icon:hover.tooltip-top::after,
+.help-icon:hover.tooltip-bottom::after,
+.help-icon:hover.tooltip-left::after,
+.help-icon:hover.tooltip-right::after {
+    display: block;
+}
+
 /* Tooltip 箭头 */
 .help-icon[data-help]::before {
     content: '';
@@ -1108,12 +1123,6 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     left: calc(100% + 18px);
     top: 50%;
     transform: translateY(-50%);
-}
-
-/* 悬停时显示 */
-.help-icon:hover::before,
-.help-icon:hover::after {
-    display: block;
 }
 
 /* 深色模式适配 */
