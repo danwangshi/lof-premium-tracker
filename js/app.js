@@ -1851,31 +1851,47 @@ class LofFundMonitor {
         const spaceLeft = rect.left;
         const spaceRight = viewportWidth - rect.right;
 
+        console.log('[DEBUG] 帮助提示定位:', {
+            helpKey: icon.dataset.help,
+            spaceAbove, spaceBelow, spaceLeft, spaceRight,
+            rectTop: rect.top, rectBottom: rect.bottom
+        });
+
         // 优先选择上方，如果空间不足则选择其他方向
         if (spaceAbove > tooltipHeight + 20) {
             // 上方有足够空间
             if (rect.left + tooltipWidth / 2 < viewportWidth && rect.right - tooltipWidth / 2 > 0) {
                 icon.classList.add('tooltip-top');
+                console.log('[DEBUG] 选择位置: tooltip-top');
             } else if (spaceRight > tooltipWidth) {
                 icon.classList.add('tooltip-right');
+                console.log('[DEBUG] 选择位置: tooltip-right');
             } else if (spaceLeft > tooltipWidth) {
                 icon.classList.add('tooltip-left');
+                console.log('[DEBUG] 选择位置: tooltip-left');
             } else {
                 icon.classList.add('tooltip-top');
+                console.log('[DEBUG] 选择位置: tooltip-top (默认)');
             }
         } else if (spaceBelow > tooltipHeight + 20) {
             // 下方有足够空间
             icon.classList.add('tooltip-bottom');
+            console.log('[DEBUG] 选择位置: tooltip-bottom');
         } else if (spaceRight > tooltipWidth) {
             // 右侧有足够空间
             icon.classList.add('tooltip-right');
+            console.log('[DEBUG] 选择位置: tooltip-right');
         } else if (spaceLeft > tooltipWidth) {
             // 左侧有足够空间
             icon.classList.add('tooltip-left');
+            console.log('[DEBUG] 选择位置: tooltip-left');
         } else {
             // 默认上方
             icon.classList.add('tooltip-top');
+            console.log('[DEBUG] 选择位置: tooltip-top (默认)');
         }
+        
+        console.log('[DEBUG] 当前类名:', icon.className);
     }
 }
 
