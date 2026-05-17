@@ -593,12 +593,14 @@ class LofFundMonitor {
 
     renderDiscountRankings() {
         if (!this.funds.length) return;
+        console.log('[DEBUG] 折价排行榜 - this.funds 长度:', this.funds.length);
         // 过滤停牌和暂停申购的基金，然后排序
         const validFunds = this.funds.filter(fund => {
             if (fund.is_suspended) return false;
             if (fund.can_purchase === false) return false;
             return true;
         });
+        console.log('[DEBUG] 折价排行榜 - validFunds 长度:', validFunds.length);
         const sorted = [...validFunds].sort((a, b) => (a.premium_rate ?? 0) - (b.premium_rate ?? 0));
         const discountContainer = document.getElementById('discountContainer');
         if (discountContainer) {
