@@ -149,20 +149,8 @@ class LofFundMonitor {
     async loadFunds() {
         this.isLoading = true;
         try {
-            // 获取申购限额筛选参数
-            const limitSelect = document.getElementById('purchaseLimitFilter');
-            const selectedLimits = Array.from(limitSelect?.selectedOptions || [])
-                .map(opt => opt.value)
-                .filter(v => v !== '');
-            
-            // 构建 API URL
+            // 构建 API URL（不传入申购限额参数，获取所有基金）
             let url = `${api.baseUrl}/api/funds?page=1&page_size=600`;
-            
-            if (selectedLimits.length > 0) {
-                selectedLimits.forEach(limit => {
-                    url += `&purchase_limit=${limit}`;
-                });
-            }
             
             const response = await fetch(url);
             const result = await response.json();
@@ -374,6 +362,31 @@ class LofFundMonitor {
             filtered = filtered.filter(fund => {
                 const avg = this.getAvgPremium3d(fund.code);
                 return avg !== null && Math.abs(avg) >= this.avgThreshold;
+            });
+        }
+        // 申购限额筛选
+        const limitSelect = document.getElementById('purchaseLimitFilter');
+        const selectedLimits = Array.from(limitSelect?.selectedOptions || [])
+            .map(opt => opt.value)
+            .filter(v => v !== '');
+        
+        if (selectedLimits.length > 0) {
+            filtered = filtered.filter(fund => {
+                const canPurchase = fund.can_purchase;
+                const limit = fund.purchase_limit;
+                
+                // 检查是否匹配选中的限额
+                return selectedLimits.some(selectedLimit => {
+                    if (selectedLimit === 'suspended') {
+                        return canPurchase === false;  // 暂停申购
+                    } else if (selectedLimit === 'unlimited') {
+                        return canPurchase !== false && limit === null;  // 开放申购无限额
+                    } else {
+                        // 数值匹配
+                        const selectedValue = parseFloat(selectedLimit);
+                        return canPurchase !== false && limit === selectedValue;
+                    }
+                });
             });
         }
         filtered.sort((a, b) => {
