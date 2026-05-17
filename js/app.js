@@ -173,11 +173,9 @@ class LofFundMonitor {
             }
             // 保存原始数据总数（过滤前）
             const totalFromApi = result.data.length;
-            // 过滤无溢价率、停牌、暂停申购的基金
+            // 只过滤无溢价率的基金（主体表格显示所有有溢价率的基金，包括停牌）
             this.funds = result.data.filter(fund => {
                 if (fund.premium_rate === null || fund.premium_rate === undefined) return false;
-                if (fund.is_suspended) return false;  // 过滤停牌基金
-                if (fund.can_purchase === false) return false;  // 过滤暂停申购基金
                 return true;
             });
             this.applyFilters();
@@ -595,7 +593,13 @@ class LofFundMonitor {
 
     renderDiscountRankings() {
         if (!this.funds.length) return;
-        const sorted = [...this.funds].sort((a, b) => (a.premium_rate ?? 0) - (b.premium_rate ?? 0));
+        // 过滤停牌和暂停申购的基金，然后排序
+        const validFunds = this.funds.filter(fund => {
+            if (fund.is_suspended) return false;
+            if (fund.can_purchase === false) return false;
+            return true;
+        });
+        const sorted = [...validFunds].sort((a, b) => (a.premium_rate ?? 0) - (b.premium_rate ?? 0));
         const discountContainer = document.getElementById('discountContainer');
         if (discountContainer) {
             discountContainer.innerHTML = sorted.slice(0, 5).map((fund, index) => `
