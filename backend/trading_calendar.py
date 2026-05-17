@@ -58,8 +58,8 @@ def get_last_trading_date() -> str:
         sse_calendar = xcals.get_calendar("XSHG")
         today = pd.Timestamp(datetime.now().date())
         
-        # 获取上一个交易日
-        last_session = sse_calendar.previous_session_label(today)
+        # 获取上一个交易日（新版 API）
+        last_session = sse_calendar.previous_session(today)
         last_trading_date = last_session.strftime('%Y-%m-%d')
         
         logger.info(f"[交易日判断] 上一个交易日: {last_trading_date}")
