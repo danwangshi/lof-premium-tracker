@@ -1029,7 +1029,7 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
 .help-icon[data-help]::before,
 .help-icon[data-help]::after {
     display: none;
-    position: absolute;
+    position: fixed;
     z-index: 10000;
     pointer-events: none;
 }
@@ -1037,21 +1037,14 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
 /* Tooltip 箭头 */
 .help-icon[data-help]::before {
     content: '';
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
     border-width: 6px;
     border-style: solid;
     border-color: transparent transparent #333 transparent;
-    margin-bottom: -1px;
 }
 
 /* Tooltip 内容框 */
 .help-icon[data-help]::after {
     content: attr(data-tooltip);
-    bottom: calc(100% + 12px);
-    left: 50%;
-    transform: translateX(-50%);
     background: #333;
     color: white;
     padding: 10px 14px;
@@ -1063,6 +1056,58 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     min-width: 280px;
     text-align: left;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* 默认：上方显示 */
+.help-icon.tooltip-top::before {
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.help-icon.tooltip-top::after {
+    bottom: calc(100% + 18px);
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* 下方显示 */
+.help-icon.tooltip-bottom::before {
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%) rotate(180deg);
+}
+
+.help-icon.tooltip-bottom::after {
+    top: calc(100% + 18px);
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* 左侧显示 */
+.help-icon.tooltip-left::before {
+    right: calc(100% + 6px);
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+}
+
+.help-icon.tooltip-left::after {
+    right: calc(100% + 18px);
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* 右侧显示 */
+.help-icon.tooltip-right::before {
+    left: calc(100% + 6px);
+    top: 50%;
+    transform: translateY(-50%) rotate(90deg);
+}
+
+.help-icon.tooltip-right::after {
+    left: calc(100% + 18px);
+    top: 50%;
+    transform: translateY(-50%);
 }
 
 /* 悬停时显示 */

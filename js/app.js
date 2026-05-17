@@ -1790,13 +1790,71 @@ class LofFundMonitor {
             pagination: '📄 显示条数说明\n\n共 X 条：经过前端过滤后的基金总数\n• 移除了 15 只无溢价率数据的基金（553 - 538 = 15）\n• 根据筛选设置进一步过滤（溢价率阈值、成交额等）\n• 如果取消“显示停牌基金”，会再过滤掉约 169 只停牌基金\n\n显示 X-Y 条：当前页显示的基金范围\n示例：“显示 1-50 条，共 538 条”表示第 1 页显示前 50 只基金，总共 538 只符合筛选条件'
         };
 
-        // 设置 data-tooltip 属性
+        // 设置 data-tooltip 属性并添加智能定位
         helpIcons.forEach(icon => {
             const helpKey = icon.dataset.help;
             if (helpContent[helpKey]) {
                 icon.dataset.tooltip = helpContent[helpKey];
             }
+
+            // 鼠标悬停时计算最佳显示位置
+            icon.addEventListener('mouseenter', () => {
+                this.updateTooltipPosition(icon);
+            });
+
+            // 窗口大小改变时重新计算
+            window.addEventListener('resize', () => {
+                if (icon.matches(':hover')) {
+                    this.updateTooltipPosition(icon);
+                }
+            });
         });
+    }
+
+    // 更新提示框位置
+    updateTooltipPosition(icon) {
+        const rect = icon.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        // 估算提示框尺寸
+        const tooltipWidth = 450; // max-width
+        const tooltipHeight = 200; // 估算高度
+
+        // 移除所有位置类
+        icon.classList.remove('tooltip-top', 'tooltip-bottom', 'tooltip-left', 'tooltip-right');
+
+        // 计算各个方向的可用空间
+        const spaceAbove = rect.top;
+        const spaceBelow = viewportHeight - rect.bottom;
+        const spaceLeft = rect.left;
+        const spaceRight = viewportWidth - rect.right;
+
+        // 优先选择上方，如果空间不足则选择其他方向
+        if (spaceAbove > tooltipHeight + 20) {
+            // 上方有足够空间
+            if (rect.left + tooltipWidth / 2 < viewportWidth && rect.right - tooltipWidth / 2 > 0) {
+                icon.classList.add('tooltip-top');
+            } else if (spaceRight > tooltipWidth) {
+                icon.classList.add('tooltip-right');
+            } else if (spaceLeft > tooltipWidth) {
+                icon.classList.add('tooltip-left');
+            } else {
+                icon.classList.add('tooltip-top');
+            }
+        } else if (spaceBelow > tooltipHeight + 20) {
+            // 下方有足够空间
+            icon.classList.add('tooltip-bottom');
+        } else if (spaceRight > tooltipWidth) {
+            // 右侧有足够空间
+            icon.classList.add('tooltip-right');
+        } else if (spaceLeft > tooltipWidth) {
+            // 左侧有足够空间
+            icon.classList.add('tooltip-left');
+        } else {
+            // 默认上方
+            icon.classList.add('tooltip-top');
+        }
     }
 }
 
