@@ -998,7 +998,7 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     .welcome-footer { padding: 12px 16px 20px; }
 }
 
-/* 帮助提示样式 */
+/* 帮助提示样式 - 简化版 */
 .help-icon {
     display: inline-flex;
     align-items: center;
@@ -1017,7 +1017,7 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     line-height: 1;
     padding: 0;
     transition: all 0.15s;
-    position: relative;
+    position: relative; /* 改为 relative */
 }
 .help-icon:hover {
     border-color: var(--primary);
@@ -1025,10 +1025,10 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     background: #f0f4ff;
 }
 
-/* Tooltip 容器 */
-.help-icon[data-help]::before,
-.help-icon[data-help]::after {
-    position: fixed;
+/* Tooltip 容器 - 使用 absolute 定位 */
+.help-icon::before,
+.help-icon::after {
+    position: absolute;
     z-index: 10000;
     pointer-events: none;
     opacity: 0;
@@ -1036,34 +1036,23 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     transition: opacity 0.2s, visibility 0.2s;
 }
 
-/* 悬停时显示 - 必须同时满足 hover 和有位置类 */
-.help-icon:hover.tooltip-top::before,
-.help-icon:hover.tooltip-bottom::before,
-.help-icon:hover.tooltip-left::before,
-.help-icon:hover.tooltip-right::before {
-    opacity: 1;
-    visibility: visible;
-}
-
-.help-icon:hover.tooltip-top::after,
-.help-icon:hover.tooltip-bottom::after,
-.help-icon:hover.tooltip-left::after,
-.help-icon:hover.tooltip-right::after {
-    opacity: 1;
-    visibility: visible;
-}
-
 /* Tooltip 箭头 */
-.help-icon[data-help]::before {
+.help-icon::before {
     content: '';
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
     border-width: 6px;
     border-style: solid;
     border-color: transparent transparent #333 transparent;
 }
 
 /* Tooltip 内容框 */
-.help-icon[data-help]::after {
+.help-icon::after {
     content: attr(data-tooltip);
+    bottom: calc(100% + 12px);
+    left: 50%;
+    transform: translateX(-50%);
     background: #333;
     color: white;
     padding: 10px 14px;
@@ -1075,79 +1064,11 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
     min-width: 280px;
     text-align: left;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    /* 调试：添加边框确保能看到 */
-    border: 2px solid red;
 }
 
-/* 默认：上方显示 */
-.help-icon.tooltip-top::before {
-    bottom: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
-}
-
-.help-icon.tooltip-top::after {
-    bottom: calc(100% + 18px);
-    left: 50%;
-    transform: translateX(-50%);
-}
-
-/* 下方显示 */
-.help-icon.tooltip-bottom::before {
-    top: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%) rotate(180deg);
-}
-
-.help-icon.tooltip-bottom::after {
-    top: calc(100% + 18px);
-    left: 50%;
-    transform: translateX(-50%);
-}
-
-/* 左侧显示 */
-.help-icon.tooltip-left::before {
-    right: calc(100% + 6px);
-    top: 50%;
-    transform: translateY(-50%) rotate(-90deg);
-}
-
-.help-icon.tooltip-left::after {
-    right: calc(100% + 18px);
-    top: 50%;
-    transform: translateY(-50%);
-}
-
-/* 右侧显示 */
-.help-icon.tooltip-right::before {
-    left: calc(100% + 6px);
-    top: 50%;
-    transform: translateY(-50%) rotate(90deg);
-}
-
-.help-icon.tooltip-right::after {
-    left: calc(100% + 18px);
-    top: 50%;
-    transform: translateY(-50%);
-}
-
-/* 深色模式适配 */
-.dark-mode .help-icon {
-    border-color: #555;
-    color: #888;
-}
-
-.dark-mode .help-icon:hover {
-    border-color: var(--primary);
-    color: var(--primary);
-    background: #1a2a48;
-}
-
-.dark-mode .help-icon[data-help]::before {
-    border-color: transparent transparent #1a2a3a transparent;
-}
-
-.dark-mode .help-icon[data-help]::after {
-    background: #1a2a3a;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+/* 悬停时显示 */
+.help-icon:hover::before,
+.help-icon:hover::after {
+    opacity: 1;
+    visibility: visible;
 }
