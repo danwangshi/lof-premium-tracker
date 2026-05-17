@@ -996,6 +996,12 @@ def init_wework_schedule():
     """初始化企业微信定时任务（从环境变量读取配置）"""
     import os
     
+    # 检查定时任务是否启用
+    schedule_enabled = os.getenv('WEWORK_SCHEDULE_ENABLED', 'true').strip().lower()
+    if schedule_enabled not in ('true', '1', 'yes'):
+        logger.info("ℹ️  企业微信定时任务未启用（WEWORK_SCHEDULE_ENABLED=false）")
+        return
+    
     # 从环境变量读取定时时间
     schedule_times_str = os.getenv('WEWORK_SCHEDULE_TIMES', '07:00').strip()
     

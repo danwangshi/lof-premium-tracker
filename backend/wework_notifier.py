@@ -215,6 +215,12 @@ def create_notifier_from_env() -> Optional[WeWorkNotifier]:
     """
     import os
     
+    # 检查企微通知是否启用
+    enabled = os.getenv('WEWORK_ENABLED', 'false').strip().lower()
+    if enabled not in ('true', '1', 'yes'):
+        logger.info("ℹ️  企业微信通知未启用（WEWORK_ENABLED=false）")
+        return None
+    
     # 读取 WEWORK_CONFIG 配置
     wework_config = os.getenv('WEWORK_CONFIG', '').strip()
     
@@ -235,7 +241,7 @@ def create_notifier_from_env() -> Optional[WeWorkNotifier]:
     agentid = parts[3]
     msgtype = parts[4] if len(parts) > 4 else 'text'
     
-    logger.info("从 WEWORK_CONFIG 加载企业微信配置成功")
+    logger.info("✅ 从 WEWORK_CONFIG 加载企业微信配置成功")
     
     return WeWorkNotifier(
         corpid=corpid,
