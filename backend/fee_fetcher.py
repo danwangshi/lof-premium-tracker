@@ -29,6 +29,7 @@ _FEE_HEADERS = {
 
 # Cache file path (same directory as this file)
 _CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fee_cache.json")
+_CACHE_EXPIRY_HOURS = 24  # 缓存有效期：24小时
 
 
 def _make_session() -> requests.Session:
@@ -195,7 +196,15 @@ def load_fee_cache() -> Dict[str, Dict[str, Any]]:
         return {}
     try:
         with open(_CACHE_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            # 检查缓存是否过期
+            if isinstance(data, dict) and "_cache_timestamp" in data:
+                timestamp = data["_cache_timestamp"]
+                now = time.time()
+                if now - timestamp > _CACHE_EXPIRY_HOURS * 3600:
+                    logger.info("Fee cache expired, will refresh")
+                    return {}
+            return data
     except Exception:
         return {}
 
@@ -203,6 +212,8 @@ def load_fee_cache() -> Dict[str, Dict[str, Any]]:
 def save_fee_cache(data: Dict[str, Dict[str, Any]]) -> None:
     """Save fee data to local cache file."""
     try:
+        # 添加时间戳
+        data["_cache_timestamp"] = time.time()
         with open(_CACHE_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
     except Exception as ex:
