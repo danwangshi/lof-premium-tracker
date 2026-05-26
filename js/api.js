@@ -98,15 +98,7 @@ class LofApiService {
         return this.requestWithRetry(`/api/funds/${code}`);
     }
 
-    // 4. 排行榜
-    async getRankings(type, limit) {
-        type = type || 'premium';
-        limit = limit || this.config.RANKING_LIMIT;
-        return this.requestWithRetry(`/api/rankings?type=${type}&limit=${limit}`);
-    }
-
-
-    // 6. 基金图表数据（支持 7/30/365 日）
+    // 4. 基金图表数据（支持 7/30/365 日）
     async getFundChart(code, days = 7) {
         return this.requestWithRetry(`/api/funds/${code}/chart?days=${days}`);
     }

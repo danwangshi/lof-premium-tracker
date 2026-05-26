@@ -586,39 +586,6 @@ def fund_chart(code: str):
         "chart": filtered,
     })
 
-# 接口3: GET /api/rankings
-# 溢价率排行榜（溢价 Top / 折价 Top）
-# ─────────────────────────────────────────────────────────────────
-
-@app.route("/api/rankings", methods=["GET"])
-def rankings():
-    # 懒更新
-    _trigger_lazy_refresh()
-    f = get_fetcher()
-    all_data = f.get_all()
-
-    rank_type = request.args.get("type", "premium")
-    try:
-        limit = min(100, max(1, int(request.args.get("limit", 20))))
-    except ValueError:
-        return err_resp("limit 必须为正整数", code=8, status=400)
-
-    valid = [v for v in all_data.values()
-             if v.get("premium_rate") is not None
-             and not _is_suspended(v)
-             and v.get("can_purchase") is not False]
-
-    if rank_type == "premium":
-        sorted_funds = sorted(valid, key=lambda x: x["premium_rate"], reverse=True)
-        label = "溢价率最高"
-    else:
-        sorted_funds = sorted(valid, key=lambda x: x["premium_rate"])
-        label = "折价率最高"
-
-    ranked = [_fmt(f) for f in sorted_funds[:limit]]
-    return ok(ranked, meta={"type": rank_type, "label": label, "limit": limit, "total": len(sorted_funds)})
-
-
 # ══════════════════════════════════════════════════════════════════
 # 历史数据 API
 # ══════════════════════════════════════════════════════════════════

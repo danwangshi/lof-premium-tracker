@@ -47,7 +47,6 @@ class LofFundMonitor {
                 if (!isReady) {
                     throw new Error('数据未就绪，后端正在初始化中，请稍后重试');
                 }
-                await this.loadRankings();
                 await this.loadPurchaseLimits();  // 加载申购限额选项
                 await this.loadFunds();
                 this.startAutoRefresh();
@@ -78,20 +77,10 @@ class LofFundMonitor {
     async checkHealth() {
         try {
             const result = await api.getHealth();
-            const data = result.data;
-            this.updateStatusInfo(data);
+            // 数据状态面板已删除，不再更新状态信息
             return result;
         } catch (error) {
             throw new Error(`服务连接失败: ${error.message}`);
-        }
-    }
-
-    async loadRankings() {
-        try {
-            const result = await api.getRankings('premium', 20);
-            this.renderRankings(result.data);
-        } catch (error) {
-            console.warn('排行榜加载失败:', error.message);
         }
     }
 
@@ -168,10 +157,7 @@ class LofFundMonitor {
             });
             this.applyFilters();
             this.renderTable();
-            this.renderDiscountRankings();
             this.updatePaginationInfo();
-            // 用 API 返回的原始总数更新基金总数
-            if (document.getElementById('totalFunds')) document.getElementById('totalFunds').textContent = totalFromApi;
             // Check if data is from history (market closed)
             const firstFund = result.data[0];
             if (firstFund && firstFund.data_date) {
@@ -562,96 +548,6 @@ class LofFundMonitor {
             <td class="col-est-profit ${estProfitClass}">${estProfitText}${estProfitInfoBtn}</td>
             <td class="col-purchase-limit">${purchaseLimitText}</td>
         </tr>`;
-    }
-
-    renderRankings(funds) {
-        const container = document.getElementById('rankingsContainer');
-        if (container) {
-            container.innerHTML = funds.slice(0, 5).map((fund, index) => `
-                <div class="ranking-item" data-code="${fund.code}" style="cursor: pointer;">
-                    <span class="rank-num rank-${index + 1}">${index + 1}</span>
-                    <div class="rank-card">
-                        <span class="rank-code">${fund.code}</span>
-                        <span class="rank-premium premium-high">${fund.premium_rate != null ? '+' + fund.premium_rate.toFixed(2) + '%' : '--'}</span>
-                    </div>
-                </div>
-            `).join('');
-            
-            // 添加点击事件
-            container.querySelectorAll('.ranking-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    const code = item.dataset.code;
-                    if (code) this.showFundDetail(code);
-                });
-            });
-        }
-        const mobileScroll = document.getElementById('mobileRankingScroll');
-        if (mobileScroll) {
-            mobileScroll.innerHTML = funds.slice(0, 10).map(fund => `
-                <div class="strip-item" data-code="${fund.code}" style="cursor: pointer;">
-                    <span class="si-code">${fund.code}</span>
-                    <span class="si-rate">${fund.premium_rate != null ? '+' + fund.premium_rate.toFixed(2) + '%' : '--'}</span>
-                </div>
-            `).join('');
-            
-            // 添加点击事件
-            mobileScroll.querySelectorAll('.strip-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    const code = item.dataset.code;
-                    if (code) this.showFundDetail(code);
-                });
-            });
-        }
-    }
-
-    renderDiscountRankings() {
-        if (!this.funds.length) return;
-        console.log('[DEBUG] 折价排行榜 - this.funds 长度:', this.funds.length);
-        // 过滤停牌和暂停申购的基金，然后排序
-        const validFunds = this.funds.filter(fund => {
-            if (fund.is_suspended) return false;
-            if (fund.can_purchase === false) return false;
-            return true;
-        });
-        console.log('[DEBUG] 折价排行榜 - validFunds 长度:', validFunds.length);
-        const sorted = [...validFunds].sort((a, b) => (a.premium_rate ?? 0) - (b.premium_rate ?? 0));
-        const discountContainer = document.getElementById('discountContainer');
-        if (discountContainer) {
-            discountContainer.innerHTML = sorted.slice(0, 5).map((fund, index) => `
-                <div class="ranking-item" data-code="${fund.code}" style="cursor: pointer;">
-                    <span class="rank-num rank-${index + 1}">${index + 1}</span>
-                    <div class="rank-card">
-                        <span class="rank-code">${fund.code}</span>
-                        <span class="rank-premium rank-discount">${fund.premium_rate != null ? fund.premium_rate.toFixed(2) + '%' : '--'}</span>
-                    </div>
-                </div>
-            `).join('');
-            
-            // 添加点击事件
-            discountContainer.querySelectorAll('.ranking-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    const code = item.dataset.code;
-                    if (code) this.showFundDetail(code);
-                });
-            });
-        }
-        const mobileDiscountScroll = document.getElementById('mobileDiscountScroll');
-        if (mobileDiscountScroll) {
-            mobileDiscountScroll.innerHTML = sorted.slice(0, 10).map(fund => `
-                <div class="strip-item" data-code="${fund.code}" style="cursor: pointer;">
-                    <span class="si-code">${fund.code}</span>
-                    <span class="si-rate">${fund.premium_rate != null ? fund.premium_rate.toFixed(2) + '%' : '--'}</span>
-                </div>
-            `).join('');
-            
-            // 添加点击事件
-            mobileDiscountScroll.querySelectorAll('.strip-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    const code = item.dataset.code;
-                    if (code) this.showFundDetail(code);
-                });
-            });
-        }
     }
 
     createMobileCard(fund) {
@@ -1117,7 +1013,6 @@ class LofFundMonitor {
             if (!this.isLoading) {
                 try {
                     await this.checkHealth();
-                    await this.loadRankings();
                     await this.loadFunds();
                     this.showError(false);
                 } catch (error) {
@@ -1142,11 +1037,7 @@ class LofFundMonitor {
     }
 
     updateStatusInfo(data) {
-        if (document.getElementById('cacheCount')) document.getElementById('cacheCount').textContent = data.cache_count ?? '-';
-        if (document.getElementById('lastFetch')) document.getElementById('lastFetch').textContent = this.formatTime(data.last_fetch);
-        if (document.getElementById('refreshInterval')) document.getElementById('refreshInterval').textContent = (data.refresh_interval_sec || 300) / 60 + '分钟';
-        const total = data.total ?? data.cache_count ?? this.funds.length;
-        if (document.getElementById('totalFunds')) document.getElementById('totalFunds').textContent = total;
+        // 数据状态面板已删除
     }
 
     updatePaginationInfo() {
@@ -1254,7 +1145,6 @@ class LofFundMonitor {
 
             // 时间不同 → 从中心服务器分发数据到网页
             this._lastServerFetch = serverLastFetch;
-            await this.loadRankings();
             await this.loadFunds();
             if (statusEl) statusEl.textContent = '✓';
         } catch (error) {
