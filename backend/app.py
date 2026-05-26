@@ -1148,7 +1148,7 @@ def manual_wework_notify():
             
             # 2. 统一计算新增份额（对比上一个不同日期的数据）
             try:
-                prev_shares_info = hdb.get_shares_by_code(code, days=7)
+                prev_shares_info = hdb.get_shares_by_code(code, days=30)
                 if len(prev_shares_info) >= 2:
                     latest = prev_shares_info[0]
                     # 找到第一个与最新日期不同的记录
@@ -1243,6 +1243,7 @@ def manual_wework_notify():
                     'sharesIncr': fund.get('shares_incr'),
                     'shares': fund.get('shares')
                 })
+                logger.info(f"[企业微信] 溢价基金 {fund_code}: shares_incr={fund.get('shares_incr')}, shares={fund.get('shares')}")
             # 折价基金
             elif rate_percent <= -discount_threshold:
                 discount_funds.append({
@@ -1254,6 +1255,7 @@ def manual_wework_notify():
                     'sharesIncr': fund.get('shares_incr'),
                     'shares': fund.get('shares')
                 })
+                logger.info(f"[企业微信] 折价基金 {fund_code}: shares_incr={fund.get('shares_incr')}, shares={fund.get('shares')}")
         
         # 按绝对值排序
         premium_funds.sort(key=lambda x: x['rate'], reverse=True)
