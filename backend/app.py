@@ -907,10 +907,108 @@ def _scheduled_fetch_shares():
     except Exception as e:
         logger.error(f"❌ 定时任务：份额数据抓取失败: {e}")
 
+
+def _scheduled_clear_fee_cache():
+    """定时任务：每天 0:01 清除费率缓存，强制第二天重新抓取"""
+    try:
+        import os
+        cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fee_cache.json")
+        
+        if os.path.exists(cache_path):
+            # 删除缓存文件
+            os.remove(cache_path)
+            logger.info("✅ 定时任务：费率缓存已清除，将在下次访问时重新抓取")
+        else:
+            logger.info("ℹ️  定时任务：费率缓存文件不存在，无需清除")
+            
+    except Exception as e:
+        logger.error(f"❌ 定时任务：清除费率缓存失败: {e}")
+
+
+def _check_and_refresh_fee_cache_on_startup():
+    """系统启动时检查费率缓存，如果过期或不在今天 0:01-0:02 之间则立即更新"""
+    try:
+        import os
+        import time
+        from datetime import datetime, timezone, timedelta
+        
+        cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fee_cache.json")
+        
+        # 如果缓存文件不存在，不需要处理（会在首次访问时自动创建）
+        if not os.path.exists(cache_path):
+            logger.info("ℹ️  启动检查：费率缓存文件不存在，将在首次访问时创建")
+            return
+        
+        # 读取缓存时间戳
+        with open(cache_path, "r", encoding="utf-8") as f:
+            import json
+            data = json.load(f)
+            
+        if not isinstance(data, dict) or "_cache_timestamp" not in data:
+            logger.warning("⚠️  启动检查：费率缓存格式错误，将删除并重建")
+            os.remove(cache_path)
+            return
+        
+        cache_timestamp = data["_cache_timestamp"]
+        now = time.time()
+        cache_age_hours = (now - cache_timestamp) / 3600
+        
+        # 获取当前时间的日期部分
+        tz = timezone(timedelta(hours=8))  # Asia/Shanghai
+        current_time = datetime.fromtimestamp(now, tz=tz)
+        current_date = current_time.date()
+        
+        # 获取缓存时间的日期部分
+        cache_time = datetime.fromtimestamp(cache_timestamp, tz=tz)
+        cache_date = cache_time.date()
+        
+        # 判断条件：
+        # 1. 缓存超过 24 小时
+        # 2. 缓存日期不是今天（说明系统好几天没运行）
+        # 3. 缓存时间在今天的 0:01-0:02 之外（说明不是由定时任务更新的）
+        should_refresh = False
+        reason = ""
+        
+        if cache_age_hours > 24:
+            should_refresh = True
+            reason = f"缓存已超过 24 小时 ({cache_age_hours:.1f}h)"
+        elif cache_date != current_date:
+            should_refresh = True
+            reason = f"缓存日期 ({cache_date}) 不是今天 ({current_date})，系统可能多天未运行"
+        else:
+            # 缓存是今天的，检查是否在 0:01-0:02 之间
+            cache_hour = cache_time.hour
+            cache_minute = cache_time.minute
+            if not (cache_hour == 0 and 1 <= cache_minute <= 2):
+                should_refresh = True
+                reason = f"缓存时间 ({cache_time.strftime('%H:%M')}) 不在 00:01-00:02 之间，可能不是由定时任务更新"
+        
+        if should_refresh:
+            logger.info(f"🔄 启动检查：{reason}，立即清除费率缓存")
+            os.remove(cache_path)
+            logger.info("✅ 启动检查：费率缓存已清除，将在首次访问时重新抓取")
+        else:
+            logger.info("✅ 启动检查：费率缓存有效，无需更新")
+            
+    except Exception as e:
+        logger.error(f"❌ 启动检查：检查费率缓存失败: {e}")
+
 # 初始化定时任务调度器
 scheduler = BackgroundScheduler(timezone='Asia/Shanghai')
+
+# 注册定时任务：每天早上7点抓取份额数据（仅交易日）
+scheduler.add_job(_scheduled_fetch_shares, 'cron', hour=7, minute=0, id='fetch_shares_daily')
+logger.info("⏰ 已注册定时任务：每天 07:00 抓取份额数据（仅交易日）")
+
+# 注册定时任务：每天 0:01 清除费率缓存
+scheduler.add_job(_scheduled_clear_fee_cache, 'cron', hour=0, minute=1, id='clear_fee_cache_daily')
+logger.info("⏰ 已注册定时任务：每天 00:01 清除费率缓存")
+
 scheduler.start()
 logger.info("⏰ 定时任务调度器已启动")
+
+# 系统启动时立即检查费率缓存
+_check_and_refresh_fee_cache_on_startup()
 
 
 # K线数据播种已改为手动触发: POST /init-kline-history
