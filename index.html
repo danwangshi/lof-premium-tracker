@@ -7,6 +7,7 @@
     <meta name="sogou_site_verification" content="Ti2yzeOZ5t" />
     <meta name="shenma-site-verification" content="579f9369e67a467b09cb4d0c31183913_1778905831" />
     <title>金快查</title>
+    <link rel="icon" href="assets/icon.jpg">
     <meta name="description" content="金快查是全市场LOF基金实时折溢价监控工具，覆盖深沪两市全部LOF基金，提供实时溢价率、折价率、套利收益计算、日线走势图。支持PC和移动端，数据5分钟自动刷新。">
     <meta name="keywords" content="LOF基金,溢价率,折价率,套利,基金溢价,场内基金,LOF套利,基金监控,实时净值">
     <meta name="author" content="MistyBridge">
@@ -24,9 +25,10 @@
     <meta name="twitter:title" content="金快查 - LOF基金实时折溢价监控">
     <meta name="twitter:description" content="全市场LOF基金实时溢价率、折价率、套利收益计算。">
 
-    <link rel="stylesheet" href="css/style.css?v=15">
+    <link rel="stylesheet" href="css/style.css?v=16">
     <link rel="stylesheet" href="css/landing.css?v=5">
     <link rel="stylesheet" href="css/account.css?v=1">
+    <link rel="stylesheet" href="css/admin.css?v=1">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -199,7 +201,28 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="modal-overlay" id="columnEditor" style="display:none">
+                    <!-- KPI 卡片编辑器 -->
+    <div class="modal-overlay" id="kpiCardEditor" style="display:none">
+        <div class="modal-content" style="max-width:520px">
+            <div class="modal-header">
+                <h3>卡片管理</h3>
+                <button class="modal-close" id="kceCloseBtn">&times;</button>
+            </div>
+            <div class="modal-body" style="padding:0">
+                <div class="ce-hint"><span id="kceHint">拖动 ≡ 调整顺序</span><button class="ce-lib-btn" id="kceLibBtn">表头库</button></div>
+                <div class="ce-list" id="kpiCardEditorList"></div>
+            </div>
+            <div class="modal-footer ce-footer-row">
+                <button class="btn-secondary" id="kcePresetsBtn">存档</button>
+                <div class="ce-footer-right">
+                    <button class="btn-secondary" id="kceResetBtn">恢复默认</button>
+                    <button class="btn-primary" id="kceApplyBtn">应用</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="columnEditor" style="display:none">
                         <div class="modal-content ce-modal">
                             <div class="modal-header">
                                 <h3>表头管理</h3>
@@ -366,11 +389,47 @@
         </div>
     </div>
 
+    <!-- ═══════════════════════════════════════════ 视图4：管理员面板 ═══════════════════════════════════════════ -->
+    <div id="view-admin" style="display:none">
+        <div class="admin-container">
+            <a href="#/" class="admin-back">← 返回首页</a>
+            <h2 class="admin-title">用户管理</h2>
+            <div class="admin-toolbar">
+                <input type="text" id="adminSearch" placeholder="搜索邮箱或昵称..." class="admin-search">
+                <select id="adminStatusFilter" class="admin-filter">
+                    <option value="all">全部状态</option>
+                    <option value="active">正常</option>
+                    <option value="banned">已封禁</option>
+                </select>
+                <select id="adminTimeFilter" class="admin-filter">
+                    <option value="all">全部时间</option>
+                    <option value="7">近7天登录</option>
+                    <option value="30">近30天登录</option>
+                </select>
+                <button class="btn-primary" id="adminSearchBtn">搜索</button>
+            </div>
+            <table class="admin-table">
+                <thead><tr>
+                    <th style="width:40px"><input type="checkbox" id="adminSelectAll" title="全选"></th>
+                    <th>邮箱</th><th>昵称</th><th>角色</th><th>状态</th><th>注册时间</th><th style="width:200px">操作</th>
+                </tr></thead>
+                <tbody id="adminUserList"><tr><td colspan="7" class="admin-empty">加载中...</td></tr></tbody>
+            </table>
+            <div class="admin-batch">
+                <button class="btn-secondary" id="adminBanSelected">批量封禁</button>
+                <button class="btn-secondary" id="adminUnbanSelected">批量解封</button>
+                <button class="btn-secondary" id="adminExportCSV">导出CSV</button>
+                <span class="admin-page-info" id="adminPageInfo"></span>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══════════════════════════════════════════ 全局：基金详情弹窗 ═══════════════════════════════════════════ -->
     <div id="fundDetailModal" class="fund-detail-overlay" style="display:none">
         <div class="fund-detail-modal">
             <div class="fd-header">
                 <h3 id="fundDetailTitle">基金详情</h3>
+                <button id="fdKpiConfigBtn" class="fd-kpi-config-btn" title="卡片管理">&#9881;</button>
                 <span class="fd-header-actions">
                     <button id="fdFavoriteBtn" class="fd-star" title="收藏基金">☆</button>
                     <button id="fdCloseBtn" class="fd-close" title="关闭">&times;</button>
@@ -395,6 +454,13 @@
                     <div class="fd-kpi-item fd-mobile-hide"><span class="fd-kpi-label">状态</span><span class="fd-kpi-value" id="fdStatus">--</span></div>
                     <div class="fd-kpi-item fd-mobile-hide"><span class="fd-kpi-label">申购限额</span><span class="fd-kpi-value" id="fdPurchaseLimit">--</span></div>
                     <div class="fd-kpi-item fd-mobile-span"><span class="fd-kpi-label">净值日期</span><span class="fd-kpi-value" id="fdNavDate">--</span></div>
+                    <div class="fd-kpi-item fd-mobile-hide"><span class="fd-kpi-label">成交量</span><span class="fd-kpi-value" id="fdVolume">--</span></div>
+                    <div class="fd-kpi-item fd-mobile-hide"><span class="fd-kpi-label">涨跌额</span><span class="fd-kpi-value" id="fdChangeAmount">--</span></div>
+                    <div class="fd-kpi-item fd-mobile-hide"><span class="fd-kpi-label">停牌状态</span><span class="fd-kpi-value" id="fdSuspended">--</span></div>
+                    <div class="fd-kpi-item fd-mobile-hide"><span class="fd-kpi-label">申购费率</span><span class="fd-kpi-value" id="fdPurchaseFee">--</span></div>
+                    <div class="fd-kpi-item fd-mobile-hide"><span class="fd-kpi-label">数据日期</span><span class="fd-kpi-value" id="fdDataDate">--</span></div>
+                    <div class="fd-kpi-item fd-mobile-hide"><span class="fd-kpi-label">换手率</span><span class="fd-kpi-value" id="fdTurnoverRate">--</span></div>
+                    <div class="fd-kpi-item fd-mobile-hide"><span class="fd-kpi-label">场内份额</span><span class="fd-kpi-value" id="fdOnExchangeShares">--</span></div>
                 </div>
                 <div class="fd-profit-section">
                     <div class="fd-profit-header">
@@ -560,7 +626,11 @@
             location.hash = '#/' + mode;
         },
 
+        _loadedScripts: {},
+
         _loadScript: function(src) {
+            if (this._loadedScripts[src]) return Promise.resolve();
+            this._loadedScripts[src] = true;
             return new Promise(function(resolve, reject) {
                 var s = document.createElement('script');
                 s.src = src;
@@ -577,19 +647,22 @@
             // Phase 1: 无依赖脚本并行加载 (Chart.js 按需延迟，不在此处加载)
             this._loading = Promise.all([
                 self._loadScript('https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js'),
-                self._loadScript('js/columns.js?v=14'),
-                self._loadScript('js/config.js?v=14'),
+                self._loadScript('js/columns.js?v=15'),
+                self._loadScript('js/kpi-cards.js?v=1'),
+                self._loadScript('js/config.js?v=15'),
                 self._loadScript('js/cache.js?v=1'),
                 self._loadScript('js/supabase.js?v=1'),
                 self._loadScript('js/auth.js?v=1'),
                 self._loadScript('js/favorites-sync.js?v=1'),
-                self._loadScript('js/account.js?v=1')
+                self._loadScript('js/settings-sync.js?v=1'),
+                self._loadScript('js/account.js?v=1'),
+                self._loadScript('js/admin.js?v=1')
             ]).then(function() {
                 // Phase 2: api.js 依赖 config.js
-                return self._loadScript('js/api.js?v=14');
+                return self._loadScript('js/api.js?v=15');
             }).then(function() {
                 // Phase 3: app.js 依赖以上所有
-                return self._loadScript('js/app.js?v=14');
+                return self._loadScript('js/app.js?v=15');
             }).then(function() {
                 self._scriptsReady = true;
             });
@@ -599,6 +672,19 @@
         _updateTabs: function(mode) {
             var tabs = document.querySelectorAll('.spa-nav-tab');
             tabs.forEach(function(t) { t.classList.toggle('active', t.dataset.mode === mode); });
+        },
+
+        _enterAdminView: function() {
+            var landingView = document.getElementById('view-landing');
+            var dataView = document.getElementById('view-data');
+            var accountView = document.getElementById('view-account');
+            var adminView = document.getElementById('view-admin');
+            landingView.style.display = 'none';
+            dataView.style.display = 'none';
+            if (accountView) accountView.style.display = 'none';
+            adminView.style.display = 'block';
+            document.title = '金快查 - 用户管理';
+            if (typeof AdminPanel !== 'undefined') AdminPanel.init();
         },
 
         _enterAccountView: function() {
@@ -632,6 +718,11 @@
 
             if (hash === '#/account') {
                 this._enterAccountView();
+                return;
+            }
+
+            if (hash === '#/admin') {
+                this._enterAdminView();
                 return;
             }
 
@@ -776,13 +867,16 @@
             preloaded = true;
             // 加载轻量脚本 → 拉取数据 → 缓存
             var scripts = [
-                'js/config.js?v=14',
-                'js/api.js?v=14',
+                'js/kpi-cards.js?v=1',
+                'js/config.js?v=15',
+                'js/api.js?v=15',
                 'js/cache.js?v=1',
                 'js/supabase.js?v=1',
                 'js/auth.js?v=1',
                 'js/favorites-sync.js?v=1',
-                'js/account.js?v=1'
+                'js/settings-sync.js?v=1',
+                'js/account.js?v=1',
+                'js/admin.js?v=1'
             ];
             var loaded = 0;
             function loadNext() {

@@ -39,6 +39,7 @@ class LofFundMonitor {
         this._initFundTypeDropdown();
         this._buildTableHead();
         this._initColumnEditor();
+        this._initKpiCardEditor();
         this.applyDarkMode(false); // 不保存，仅应用
         this.init();
     }
@@ -111,12 +112,15 @@ class LofFundMonitor {
     loadRankings() {}
 
     async loadFunds() {
+        // 防止并发加载（自动刷新可能在加载中再次触发）
+        if (this._loadingFunds) return;
+        this._loadingFunds = true;
         this.isLoading = true;
-        // Phase 1: 检查缓存，命中则立即渲染
         var self = this;
+        // Phase 1: 检查缓存，仅在首次加载时渲染缓存（避免旧缓存覆盖新数据）
         var cachedFunds = Cache.get('funds');
         var cachedMeta = Cache.get('fundsMeta');
-        if (cachedFunds && cachedFunds.length > 0) {
+        if (cachedFunds && cachedFunds.length > 0 && self.funds.length === 0) {
             self.funds = cachedFunds;
             self.applyFilters();
             self.renderTable();
@@ -161,6 +165,7 @@ class LofFundMonitor {
             self._softToast('刷新失败，显示缓存数据');
         } finally {
             self.isLoading = false;
+            self._loadingFunds = false;
         }
     }
 
@@ -499,6 +504,10 @@ class LofFundMonitor {
                 return '<td class="col-data-date">' + (fund.data_date || '-') + '</td>';
             case 'holdings':
                 return '<td class="col-holdings"><button class="btn-holdings" data-code="' + fund.code + '">点击查看</button></td>';
+            case 'turnover_rate':
+                return '<td class="col-turnover">' + (fund.turnover_rate != null ? fund.turnover_rate.toFixed(2) + '%' : '--') + '</td>';
+            case 'on_exchange_shares':
+                return '<td class="col-shares">' + (fund.on_exchange_shares != null ? (fund.on_exchange_shares / 10000).toFixed(2) + '万份' : '--') + '</td>';
             default:
                 return '<td class="col-unknown">--</td>';
         }
@@ -775,6 +784,9 @@ class LofFundMonitor {
                     e.target.closest('.btn-profit-info') || e.target.closest('.mc-profit-help') ||
                     e.target.closest('.mc-fav-btn')) return;
                 const code = (row || card).dataset.code;
+                // KPI 卡片编辑器打开时不触发详情
+                var kpiEditor = document.getElementById('kpiCardEditor');
+                if (kpiEditor && kpiEditor.style.display === 'flex') return;
                 if (code) this.showFundDetail(code);
             }
         });
@@ -789,6 +801,7 @@ class LofFundMonitor {
         }
         localStorage.setItem('lof_darkMode', this.darkMode);
         this.applyDarkMode(true);
+        if (typeof SettingsSync !== 'undefined') SettingsSync.pushToCloud();
     }
 
     applyDarkMode(save) {
@@ -871,6 +884,7 @@ class LofFundMonitor {
         if (this.minAmount > 0) parts.push(`成交额≥${this.minAmount}万`);
         parts.push(`佣金万${this.commissionRate} 最低${this.commissionMin}元 最大投入${this.maxCapital}元`);
         this.showToast(parts.length ? '设置已应用：' + parts.join('，') : '设置已重置');
+        if (typeof SettingsSync !== 'undefined') SettingsSync.pushToCloud();
     }
 
     resetSettings() {
@@ -1196,6 +1210,102 @@ class LofFundMonitor {
         document.body.style.overflow = '';
         if (this._sortable) { this._sortable.destroy(); this._sortable = null; }
         if (this._rankTimer) { clearInterval(this._rankTimer); this._rankTimer = null; }
+    }
+
+    // ── KPI 卡片编辑器 ──
+    _initKpiCardEditor() {
+        var self = this;
+        this._kpiEditorView = 'active';
+        document.getElementById('fdKpiConfigBtn').addEventListener('click', function (e) { e.stopPropagation(); self._openKpiCardEditor(); });
+        document.getElementById('kceCloseBtn').addEventListener('click', function () { self._closeKpiCardEditor(); });
+        document.getElementById('kpiCardEditor').addEventListener('click', function (e) { if (e.target === e.currentTarget) self._closeKpiCardEditor(); });
+        document.getElementById('kceApplyBtn').addEventListener('click', function () { self._applyKpiPrefs(); self._closeKpiCardEditor(); });
+        document.getElementById('kceResetBtn').addEventListener('click', function () { resetKpiPrefs(); self._buildKpiCardEditorList(); });
+        document.getElementById('kceLibBtn').addEventListener('click', function () { self._kpiEditorView = (self._kpiEditorView === 'library') ? 'active' : 'library'; self._buildKpiCardEditorList(); });
+        document.getElementById('kcePresetsBtn').addEventListener('click', function () { self._kpiEditorView = (self._kpiEditorView === 'presets') ? 'active' : 'presets'; self._buildKpiCardEditorList(); });
+    }
+
+    _openKpiCardEditor() {
+        this.closeFundDetail();
+        document.getElementById('kpiCardEditor').style.display = 'flex';
+        this._buildKpiCardEditorList();
+    }
+
+    _closeKpiCardEditor() {
+        document.getElementById('kpiCardEditor').style.display = 'none';
+        if (this._kpiSortable) { this._kpiSortable.destroy(); this._kpiSortable = null; }
+    }
+
+    _buildKpiCardEditorList() {
+        var list = document.getElementById('kpiCardEditorList');
+        if (!list || typeof KPI_CARD_REGISTRY === 'undefined') return;
+        if (this._kpiSortable) { this._kpiSortable.destroy(); this._kpiSortable = null; }
+        var self = this;
+        var isActive = this._kpiEditorView !== 'library' && this._kpiEditorView !== 'presets';
+        var libBtn = document.getElementById('kceLibBtn');
+        if (libBtn) { libBtn.style.display = (self._kpiEditorView === 'presets') ? 'none' : ''; libBtn.textContent = isActive ? '表头库' : '← 返回可见列'; libBtn.classList.toggle('active', !isActive); }
+        var presetsBtn = document.getElementById('kcePresetsBtn');
+        if (presetsBtn) { presetsBtn.textContent = (self._kpiEditorView === 'presets') ? '返回可见列' : '存档'; presetsBtn.classList.toggle('active', self._kpiEditorView === 'presets'); }
+        var hint = document.getElementById('kceHint');
+        if (hint) hint.textContent = (self._kpiEditorView === 'presets') ? '表头存档管理' : (isActive ? '拖动 ≡ 调整顺序' : '勾选控制显隐');
+
+        var html = '';
+        if (self._kpiEditorView === 'presets') {
+            var presets = (typeof loadKpiPresets === 'function') ? loadKpiPresets() : [];
+            if (presets.length === 0) { html += '<div class="ce-preset-empty">暂无存档<br>在下方输入名称保存当前表头配置</div>'; }
+            else { presets.forEach(function (p, i) { html += '<div class="ce-preset-item"><span class="ce-preset-name">' + p.name + '</span><button class="ce-preset-btn apply" data-idx="' + i + '">应用</button><button class="ce-preset-btn overwrite" data-idx="' + i + '">存档</button><button class="ce-preset-btn delete" data-idx="' + i + '">删除</button></div>'; }); }
+            html += '<div class="ce-preset-new"><input type="text" id="kcePresetNameInput" placeholder="输入存档名称..."><button class="btn-primary" id="kcePresetSaveBtn" style="padding:6px 14px;font-size:0.82rem">保存为新存档</button></div>';
+        } else if (isActive) {
+            var activeIds = getActiveKpiIds();
+            var prefs = loadKpiPrefs();
+            var order = prefs.order || KPI_CARD_REGISTRY.map(function (c) { return c.id; });
+            var criticalCards = KPI_CARD_REGISTRY.filter(function (c) { return c.critical; });
+            criticalCards.forEach(function (col) { html += '<div class="ce-item" data-card-id="' + col.id + '" style="opacity:0.55"><span class="drag-handle" style="visibility:hidden">&#9776;</span><span class="ce-item-label">' + col.label + ' (必选)</span></div>'; });
+            var activeCols = KPI_CARD_REGISTRY.filter(function (c) { return activeIds.indexOf(c.id) >= 0 && !c.critical; });
+            activeCols.sort(function (a, b) { return order.indexOf(a.id) - order.indexOf(b.id); });
+            activeCols.forEach(function (col, idx) { html += '<div class="ce-item" data-card-id="' + col.id + '"><span class="drag-handle">&#9776;</span><span class="ce-item-label">' + col.label + '</span><input class="ce-rank" type="number" value="' + (idx + 1) + '" data-card-id="' + col.id + '"><button class="ce-trash" title="移除此列">&#128465;</button></div>'; });
+        } else {
+            var checkedCols = [], uncheckedCols = [];
+            KPI_CARD_REGISTRY.filter(function (c) { return !c.critical; }).forEach(function (col) { var prefs = loadKpiPrefs(); var v = prefs.visible || {}; var checked = (col.id in v) ? v[col.id] : col.defaultVisible; (checked ? checkedCols : uncheckedCols).push(col); });
+            html += '<div class="ce-lib-panels"><div class="ce-lib-panel"><div class="ce-lib-panel-title">已显示</div>'; checkedCols.forEach(function (col) { html += '<div class="ce-item" data-card-id="' + col.id + '"><input type="checkbox" checked data-card-id="' + col.id + '"><span class="ce-item-label">' + col.label + '</span></div>'; }); html += '</div>';
+            html += '<div class="ce-lib-panel"><div class="ce-lib-panel-title">已隐藏</div>'; uncheckedCols.forEach(function (col) { html += '<div class="ce-item" data-card-id="' + col.id + '" style="opacity:0.45"><input type="checkbox" data-card-id="' + col.id + '"><span class="ce-item-label">' + col.label + '</span></div>'; }); html += '</div></div>';
+        }
+        list.innerHTML = html;
+
+        if (self._kpiEditorView === 'presets') {
+            list.querySelectorAll('.ce-preset-btn.apply').forEach(function (btn) { btn.addEventListener('click', function () { var idx = parseInt(this.dataset.idx); if (typeof applyKpiPreset === 'function') applyKpiPreset(idx); self._kpiEditorView = 'active'; self._applyKpiPrefs(); self._closeKpiCardEditor(); }); });
+            list.querySelectorAll('.ce-preset-btn.overwrite').forEach(function (btn) { btn.addEventListener('click', function () { var idx = parseInt(this.dataset.idx); if (typeof overwriteKpiPreset === 'function') overwriteKpiPreset(idx); if (typeof self.showToast === 'function') self.showToast('已覆盖存档'); self._buildKpiCardEditorList(); }); });
+            list.querySelectorAll('.ce-preset-btn.delete').forEach(function (btn) { btn.addEventListener('click', function () { var idx = parseInt(this.dataset.idx); if (typeof deleteKpiPreset === 'function') deleteKpiPreset(idx); self._buildKpiCardEditorList(); }); });
+            var sb = document.getElementById('kcePresetSaveBtn'), ni = document.getElementById('kcePresetNameInput');
+            if (sb && ni) sb.addEventListener('click', function () { var n = ni.value.trim(); if (!n) return; if (typeof saveCurrentAsKpiPreset === 'function') saveCurrentAsKpiPreset(n); if (typeof self.showToast === 'function') self.showToast('已保存: ' + n); self._buildKpiCardEditorList(); });
+        } else if (isActive) {
+            list.querySelectorAll('.ce-trash').forEach(function (btn) { btn.addEventListener('click', function (e) { e.stopPropagation(); var colId = this.closest('.ce-item').dataset.cardId; var prefs = loadKpiPrefs(); prefs.visible = prefs.visible || {}; prefs.visible[colId] = false; saveKpiPrefs(prefs); self._buildKpiCardEditorList(); }); });
+            list.querySelectorAll('.ce-rank').forEach(function (input) { input.addEventListener('click', function (e) { e.stopPropagation(); }); input.addEventListener('mousedown', function (e) { e.stopPropagation(); }); input.addEventListener('change', function () { var targetIdx = parseInt(this.value) - 1; var items = Array.from(list.querySelectorAll('.ce-item:not([style*="opacity"])')); var currentIdx = items.indexOf(this.closest('.ce-item')); if (isNaN(targetIdx) || targetIdx < 0 || targetIdx >= items.length || targetIdx === currentIdx) { this.value = currentIdx + 1; return; } var movingItem = items[currentIdx]; if (currentIdx < targetIdx) list.insertBefore(movingItem, items[targetIdx].nextSibling); else list.insertBefore(movingItem, items[targetIdx]); var newItems = list.querySelectorAll('.ce-item:not([style*="opacity"])'); newItems.forEach(function (item, i) { var ri = item.querySelector('.ce-rank'); if (ri) ri.value = i + 1; }); var newOrder = Array.from(list.querySelectorAll('.ce-item')).map(function (el) { return el.dataset.cardId; }); var prefs = loadKpiPrefs(); prefs.order = newOrder; saveKpiPrefs(prefs); }); });
+            if (typeof Sortable !== 'undefined') this._kpiSortable = new Sortable(list, { handle: '.drag-handle', animation: 150, ghostClass: 'ce-ghost', filter: '[style*="opacity"]', onEnd: function () { var newOrder = Array.from(list.querySelectorAll('.ce-item')).map(function (el) { return el.dataset.cardId; }); var prefs = loadKpiPrefs(); prefs.order = newOrder; saveKpiPrefs(prefs); } });
+        } else {
+            list.querySelectorAll('.ce-item').forEach(function (item) { item.addEventListener('click', function (e) { if (e.target.tagName === 'INPUT') return; var cb = item.querySelector('input[type="checkbox"]'); if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', { bubbles: true })); } }); });
+            list.querySelectorAll('input[type="checkbox"]').forEach(function (cb) { cb.addEventListener('change', function () { var colId = cb.dataset.cardId; var prefs = loadKpiPrefs(); prefs.visible = prefs.visible || {}; prefs.visible[colId] = cb.checked; saveKpiPrefs(prefs); self._buildKpiCardEditorList(); }); });
+        }
+    }
+
+
+    _applyKpiPrefs() {
+        this._renderKpiCards();
+    }
+
+    _renderKpiCards() {
+        if (typeof getActiveKpiIds !== 'function') return;
+        var activeIds = getActiveKpiIds();
+        var items = document.querySelectorAll('.fd-kpi-grid .fd-kpi-item');
+        items.forEach(function (item) {
+            var valueSpan = item.querySelector('.fd-kpi-value');
+            var kpiId = valueSpan ? valueSpan.id : null;
+            if (kpiId && activeIds.indexOf(kpiId) < 0) {
+                item.classList.add('fd-kpi-hidden');
+            } else {
+                item.classList.remove('fd-kpi-hidden');
+            }
+        });
     }
 
     _buildColumnEditorList() {
@@ -1711,6 +1821,7 @@ class LofFundMonitor {
         this._detailDays = 7;
         this._detailFundCode = code;
         this._updateFavoriteStar(code);
+        this._renderKpiCards();
         const indSel = document.getElementById('fdIndSelect');
         const rangeSel = document.getElementById('fdRangeSelect');
         if (indSel) indSel.value = 'price,nav';
@@ -1847,6 +1958,15 @@ class LofFundMonitor {
         }
 
         setVal('fdNavDate', fund.nav_date || '-');
+        // 新增字段
+        setVal('fdVolume', fund.volume != null ? (fund.volume / 10000).toFixed(2) + '万手' : '--');
+        setVal('fdChangeAmount', fund.change_amount != null ? fund.change_amount.toFixed(4) : '--');
+        setVal('fdSuspended', fund.is_suspended ? '停牌' : '正常');
+        setVal('fdPurchaseFee', fund.purchase_fee_rate != null ? fund.purchase_fee_rate.toFixed(2) + '%' : '--');
+        setVal('fdDataDate', fund.data_date || '-');
+        setVal('fdTurnoverRate', fund.turnover_rate != null ? fund.turnover_rate.toFixed(2) + '%' : '--');
+        var shares = fund.on_exchange_shares;
+        setVal('fdOnExchangeShares', shares != null ? (shares / 10000).toFixed(2) + '万份' : '--');
 
         this._detailEstProfit = est;
         this._detailFundCode = fund.code;
