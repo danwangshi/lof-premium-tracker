@@ -14,12 +14,13 @@ except Exception:
     pass
 
 import json
-import logging
 import os
 import threading
 from datetime import datetime, time, timezone
 from flask import Flask, jsonify, redirect, request, send_from_directory
 from flask_cors import CORS
+
+import structlog
 
 from config import Config
 from data_fetcher import get_fetcher
@@ -31,14 +32,21 @@ from task_queue import get_task_queue
 from nav_backfill import run_nav_backfill
 
 # ─────────────────────────────────────────────
-# 日志配置
+# 结构化日志
 # ─────────────────────────────────────────────
-logging.basicConfig(
-    level=getattr(logging, Config.LOG_LEVEL),
-    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_log_level,
+        structlog.dev.set_exc_info,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer(),
+    ],
+    wrapper_class=structlog.stdlib.BoundLogger,
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(),
+    cache_logger_on_first_use=True,
 )
-logger = logging.getLogger("lof-api")
+logger = structlog.get_logger()
 
 # ─────────────────────────────────────────────
 # Flask 应用
@@ -213,8 +221,8 @@ def _fmt(fund: dict, detail: bool = False) -> dict:
     if detail:
         result.update({
             "prev_nav": fund.get("prev_nav"),        # 昨日净值
-            "volume_w": round(fund.get("volume", 0) / 10000, 2),  # 成交量（万手）
-            "amount_w": round(fund.get("amount", 0) / 10000, 2),   # 成交额（万元）
+            "volume_w": round((fund.get("volume") or 0) / 10000, 2),  # 成交量（万手）
+            "amount_w": round((fund.get("amount") or 0) / 10000, 2),   # 成交额（万元）
         })
 
     return result
@@ -514,6 +522,38 @@ def fund_detail(code: str):
 
 # ─────────────────────────────────────────────────────────────────
 
+@app.route("/api/funds/<code>/holdings", methods=["GET"])
+def fund_holdings(code):
+    """获取基金十大持仓数据（仅对不停牌+可申购+成交额>100万的基金）"""
+    f = get_fetcher()
+    funds = f.get_all()
+    fund = funds.get(code)
+    if not fund:
+        return err_resp("基金不存在", code=404, status=404)
+
+    # 条件检查
+    reasons = []
+    if fund.get("is_suspended"):
+        reasons.append("停牌")
+    if fund.get("can_purchase") is False:
+        reasons.append("暂停申购")
+    amount = fund.get("amount") or 0
+    if amount < 1_000_000:
+        reasons.append("成交额小于100万")
+
+    if reasons:
+        return ok({
+            "available": False,
+            "reason": "暂不支持：该基金" + "、".join(reasons)
+        })
+
+    from holdings_cache import get_holdings
+    data = get_holdings(code)
+    if data and data.get("holdings"):
+        return ok({"available": True, "quarter": data.get("quarter"), "holdings": data["holdings"]})
+    return ok({"available": True, "quarter": None, "holdings": []})
+
+
 @app.route("/api/funds/<code>/chart", methods=["GET"])
 def fund_chart(code: str):
     """获取基金历史价格/净值曲线数据，支持 7/30/365 日。热门基金优先从缓存读取"""
@@ -673,7 +713,7 @@ def _trigger_lazy_refresh():
     def _do_refresh():
         nonlocal cache_empty
         try:
-            logger.info("⏰ 懒更新触发，开始刷新...")
+            logger.info("lazy_refresh_start")
             ok_flag = f.fetch_all()
             if ok_flag:
                 # 保存溢价率快照到历史数据库
@@ -692,8 +732,14 @@ def _trigger_lazy_refresh():
                     except Exception as ex:
                         logger.debug(f"Chart cache refresh skipped: {ex}")
                 except Exception as ex:
-                    logger.warning(f"历史数据保存失败: {ex}")
-                logger.info(f"✅ 懒更新完成，当前缓存 {len(f.get_all())} 只基金")
+                    logger.warning("history_save_failed", error=str(ex))
+                logger.info("lazy_refresh_done", cache_count=len(f.get_all()))
+                # 后台预抓取十大持仓（符合条件的基金）
+                try:
+                    from holdings_cache import refresh_for_funds
+                    refresh_for_funds(f.get_all())
+                except Exception as ex:
+                    logger.debug("holdings_refresh_skipped", error=str(ex))
             else:
                 # 实时抓取失败，尝试从历史数据降级
                 if len(f.get_all()) == 0:
@@ -804,10 +850,10 @@ def _startup_init():
             except Exception as ex:
                 logger.debug(f"Chart cache refresh skipped: {ex}")
         except Exception as ex:
-            logger.warning(f"历史数据保存失败: {ex}")
-        logger.info(f"✅ 实时数据刷新完成，{len(f.get_all())} 只基金")
+            logger.warning("history_save_failed", error=str(ex))
+        logger.info("realtime_refresh_done", fund_count=len(f.get_all()))
     else:
-        logger.info("⚠️ 实时数据抓取失败，继续使用历史数据服务")
+        logger.warning("realtime_fetch_failed")
 
 
 # 启动后台初始化线程（gunicorn导入模块时自动触发）

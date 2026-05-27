@@ -10,13 +10,13 @@ Fetches per-fund fee rates from East Money:
 These values change rarely (monthly or less), so they are cached
 and refreshed on a longer interval than price/NAV data.
 """
-import re, json, time, logging, threading, os
+import re, json, time, structlog, threading, os
 from typing import Dict, Optional, Any
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 _FEE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -29,6 +29,7 @@ _FEE_HEADERS = {
 
 # Cache file path (same directory as this file)
 _CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fee_cache.json")
+_CACHE_VERSION = 2  # increment when parser logic changes
 
 
 def _make_session() -> requests.Session:
@@ -41,6 +42,21 @@ def _make_session() -> requests.Session:
     s.mount("http://", adapter)
     s.mount("https://", adapter)
     return s
+
+
+def _parse_purchase_status_from_html(html: str) -> Optional[bool]:
+    """
+    Parse 申购状态 from jjfl HTML page.
+    Returns: True=开放申购, False=暂停申购, None=未知
+    搜索关键词：暂停申购、仅开放赎回、限制大额申购
+    """
+    if "暂停申购" in html:
+        return False
+    if "仅开放赎回" in html:
+        return False
+    if "开放申购" in html:
+        return True
+    return None
 
 
 def _parse_purchase_limit_from_html(html: str) -> Optional[float]:
@@ -112,6 +128,7 @@ def fetch_fee_for_code(code: str, session: requests.Session) -> Dict[str, Any]:
         "purchase_fee_rate": None,
         "redemption_fee_rate": None,
         "purchase_limit": None,
+        "can_purchase": None,
     }
 
     # 1. Get purchase fee rate from pingzhongdata (fast, small response)
@@ -125,7 +142,7 @@ def fetch_fee_for_code(code: str, session: requests.Session) -> Dict[str, Any]:
         if m:
             result["purchase_fee_rate"] = float(m.group(1))
     except Exception as ex:
-        logger.debug(f"pingzhongdata fee fetch failed for {code}: {ex}")
+        logger.debug("fee_fetch_failed", code=code, source="pingzhongdata", error=str(ex))
 
     # 2. Get redemption fee rate and purchase limit from jjfl HTML page
     try:
@@ -138,8 +155,9 @@ def fetch_fee_for_code(code: str, session: requests.Session) -> Dict[str, Any]:
         html = resp.text
         result["redemption_fee_rate"] = _parse_redemption_fee_from_html(html)
         result["purchase_limit"] = _parse_purchase_limit_from_html(html)
+        result["can_purchase"] = _parse_purchase_status_from_html(html)
     except Exception as ex:
-        logger.debug(f"jjfl fee fetch failed for {code}: {ex}")
+        logger.debug("fee_fetch_failed", code=code, source="jjfl", error=str(ex))
 
     return result
 
@@ -179,17 +197,21 @@ def fetch_fees_batch(codes: list, concurrency: int = 10) -> Dict[str, Dict[str, 
     for tt in threads:
         tt.join()
 
-    logger.info(f"Fee data fetched: {len(result)}/{len(codes)} funds")
+    logger.info("fee_data_fetched", fetched=len(result), total=len(codes))
     return result
 
 
 def load_fee_cache() -> Dict[str, Dict[str, Any]]:
-    """Load fee data from local cache file."""
+    """Load fee data from local cache file. Returns empty if version mismatch."""
     if not os.path.exists(_CACHE_PATH):
         return {}
     try:
         with open(_CACHE_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+            cached = json.load(f)
+        if isinstance(cached, dict) and cached.get("version") == _CACHE_VERSION:
+            return cached.get("data", {})
+        # Version mismatch: discard old cache
+        return {}
     except Exception:
         return {}
 
@@ -198,6 +220,6 @@ def save_fee_cache(data: Dict[str, Dict[str, Any]]) -> None:
     """Save fee data to local cache file."""
     try:
         with open(_CACHE_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
+            json.dump({"version": _CACHE_VERSION, "data": data}, f, ensure_ascii=False)
     except Exception as ex:
-        logger.warning(f"Failed to save fee cache: {ex}")
+        logger.warning("fee_cache_save_failed", error=str(ex))
