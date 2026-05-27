@@ -2008,6 +2008,7 @@ class LofFundMonitor {
         const prices = chartData.map(d => d.price);
         const navs = chartData.map(d => d.nav);
         const premiums = chartData.map(d => d.premium_rate);
+        const sharesData = chartData.map(d => d.on_exchange_shares);
 
         const isDark = this.darkMode === 'dark';
         const tc = isDark ? '#8899aa' : '#666';
@@ -2016,9 +2017,9 @@ class LofFundMonitor {
         const pointR = isYearly ? 0 : 4;
         const tickLimit = isYearly ? 15 : chartData.length;
 
-        // 模式: 'price,nav' 显示价格+净值, 'premium' 显示溢价率
         const mode = this._detailMode || 'price,nav';
         const isPremMode = mode === 'premium';
+        const isSharesMode = mode === 'turnover';
 
         // 价格/净值 Y轴范围
         const pnVals = prices.concat(navs).filter(v => v != null);
@@ -2030,6 +2031,10 @@ class LofFundMonitor {
         const prAbs = prVals.length > 0 ? Math.max(Math.abs(Math.min(...prVals)), Math.abs(Math.max(...prVals))) : 5;
         const prMax = Math.ceil(prAbs * 1.2) || 5;
 
+        // 场内份额 Y轴范围
+        const shVals = sharesData.filter(v => v != null);
+        const shMax = shVals.length > 0 ? Math.ceil(Math.max(...shVals) * 1.1) : 10;
+
         this._detailChart = new Chart(ctx, {
             type: 'line',
             data: {
@@ -2039,13 +2044,13 @@ class LofFundMonitor {
                         _key: 'price', label: '场内价格', yAxisID: 'yPrice',
                         data: prices, borderColor: '#ff7a45', backgroundColor: 'rgba(255,122,69,0.08)',
                         borderWidth: 2, pointRadius: pointR, pointBackgroundColor: '#ff7a45', tension: 0.2, fill: false,
-                        hidden: isPremMode,
+                        hidden: isPremMode || isSharesMode,
                     },
                     {
                         _key: 'nav', label: '场外净值', yAxisID: 'yPrice',
                         data: navs, borderColor: '#40a9ff', backgroundColor: 'rgba(64,169,255,0.08)',
                         borderWidth: 2, pointRadius: pointR, pointBackgroundColor: '#40a9ff', tension: 0.2, fill: false,
-                        hidden: isPremMode,
+                        hidden: isPremMode || isSharesMode,
                     },
                     {
                         _key: 'premium', label: '溢价率', yAxisID: 'yPrem',
@@ -2055,6 +2060,12 @@ class LofFundMonitor {
                             borderColor: (ctx) => (ctx.p0.raw >= 0 ? '#e74c3c' : '#27ae60'),
                         },
                         pointBackgroundColor: premiums.map(v => v >= 0 ? '#e74c3c' : '#27ae60'),
+                    },
+                    {
+                        _key: 'shares', label: '场内份额(万份)', yAxisID: 'yShares',
+                        data: sharesData, borderColor: '#9b59b6', backgroundColor: 'rgba(155,89,182,0.08)',
+                        borderWidth: 2, pointRadius: pointR, pointBackgroundColor: '#9b59b6', tension: 0.2, fill: false,
+                        hidden: !isSharesMode,
                     },
                 ],
             },
@@ -2071,7 +2082,7 @@ class LofFundMonitor {
                 scales: {
                     x: { grid: { display: false }, ticks: { font: { size: 11 }, color: tc, maxTicksLimit: tickLimit, autoSkip: true } },
                     yPrice: {
-                        type: 'linear', display: !isPremMode, position: 'left',
+                        type: 'linear', display: !isPremMode && !isSharesMode, position: 'left',
                         grid: { color: gc }, min: pnMin, max: pnMax,
                         ticks: { font: { size: 11 }, color: tc, callback: (v) => v.toFixed(3) },
                     },
@@ -2082,6 +2093,14 @@ class LofFundMonitor {
                             font: { size: 11 },
                             color: (ctx) => ctx.tick.value > 0 ? '#e74c3c' : ctx.tick.value < 0 ? '#27ae60' : tc,
                             callback: (v) => v.toFixed(1) + '%',
+                        },
+                    },
+                    yShares: {
+                        type: 'linear', display: isSharesMode, position: 'left',
+                        grid: { color: gc }, min: 0, max: shMax,
+                        ticks: {
+                            font: { size: 11 }, color: '#9b59b6',
+                            callback: (v) => v.toFixed(0) + '万份',
                         },
                     },
                 },
@@ -2112,7 +2131,28 @@ class LofFundMonitor {
 
         const mode = this._detailMode || 'price,nav';
         const isPrem = mode === 'premium';
+        const isShares = mode === 'turnover';
         const date = point.date;
+
+        // 场内份额模式：显示份额 + 换手率，不显示套利模拟
+        if (isShares) {
+            let html = '<div class="arb-tooltip-date">' + date + '</div>';
+            var shVal = point.on_exchange_shares;
+            html += '<div class="arb-tooltip-row"><span>场内份额</span><span>' + (shVal != null ? shVal.toFixed(2) + '万份' : '--') + '</span></div>';
+            // 近似换手率：成交额/价格/份额
+            var price = point.price, amount = point.amount;
+            if (price && amount && shVal && price > 0 && shVal > 0) {
+                var estVol = amount / price;
+                var estTurnover = (estVol / (shVal * 10000) * 100);
+                html += '<div class="arb-tooltip-row"><span>换手率(估)</span><span>' + estTurnover.toFixed(2) + '%</span></div>';
+            } else {
+                html += '<div class="arb-tooltip-row"><span>换手率(估)</span><span>--</span></div>';
+            }
+            html += '<div class="arb-tooltip-disclaimer">份额数据基于当前值，实际每季度更新</div>';
+            el.innerHTML = html;
+            el.style.display = 'block';
+            return;
+        }
 
         // Get settings
         const maxCap = this.maxCapital || 1000;
