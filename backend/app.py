@@ -378,6 +378,23 @@ def init_kline_history():
     return ok({"status": "started", "task": task.to_dict()})
 
 
+@app.route("/api/kline-backfill-stream", methods=["POST"])
+def kline_backfill_stream():
+    """流式回填K线数据，实时输出进度"""
+    from flask import Response, stream_with_context
+    from history_fetcher import fetch_kline_historical_data_stream
+
+    def generate():
+        for msg in fetch_kline_historical_data_stream():
+            yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.route("/api/nav-backfill", methods=["POST"])
 def init_nav_backfill():
     """手动触发净值数据回填 — 补充 daily_kline 中缺失的 NAV"""
@@ -574,7 +591,7 @@ def _fill_shares(chart: list, fund: dict):
         vol = pt.pop("volume", None)
         tr = pt.pop("turnover_rate", None)
         if vol and tr and tr > 0:
-            pt["on_exchange_shares"] = round(vol / tr / 10000, 2)
+            pt["on_exchange_shares"] = round(vol / tr, 2)  # 手/%=万份
         elif cur_shares and cur_shares > 0:
             pt["on_exchange_shares"] = round(cur_shares / 10000, 2)
 
