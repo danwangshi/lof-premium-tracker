@@ -194,6 +194,23 @@ class HistoryDB:
             CREATE INDEX IF NOT EXISTS idx_kline_code_date
                 ON daily_kline (code, date DESC)
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS fee_cache (
+                code               VARCHAR(6) PRIMARY KEY,
+                purchase_fee_rate  NUMERIC(10,4),
+                redemption_fee_rate NUMERIC(10,4),
+                purchase_limit     NUMERIC(16,2),
+                can_purchase       BOOLEAN,
+                fetched_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS suspension_cache (
+                code        VARCHAR(6) PRIMARY KEY,
+                is_suspended BOOLEAN NOT NULL DEFAULT FALSE,
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
 
     def _migrate_schema(self, cur):
         """从旧 schema 迁移到新 schema（事务内执行）"""
@@ -505,7 +522,137 @@ class HistoryDB:
         finally:
             self._pool.putconn(conn)
 
+    def get_prev_amounts(self) -> Dict[str, float]:
+        """获取上一个交易日所有基金的成交额，返回 {code: amount}"""
+        conn = self._pool.getconn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT code, amount FROM daily_kline
+                    WHERE date = (
+                        SELECT DISTINCT date FROM daily_kline
+                        WHERE date < CURRENT_DATE
+                        ORDER BY date DESC LIMIT 1
+                    ) AND amount > 0
+                """)
+                return {r["code"]: float(r["amount"]) for r in cur.fetchall()}
+        except Exception as e:
+            logger.warning("Failed to get prev amounts: %s", e)
+            return {}
+        finally:
+            self._pool.putconn(conn)
+
     # ── Internal Helpers ─────────────────────────────
+
+    def load_fee_cache(self) -> Dict[str, Dict]:
+        """从数据库加载费率缓存，返回 {code: {purchase_fee_rate, ...}}"""
+        conn = self._pool.getconn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT * FROM fee_cache")
+                result = {}
+                for r in cur.fetchall():
+                    d = dict(r)
+                    code = d.pop("code")
+                    # Convert Decimal to float, datetime to timestamp
+                    for k, v in d.items():
+                        if v is not None and hasattr(v, 'timestamp'):
+                            d[k] = v.timestamp()
+                        elif v is not None and hasattr(v, '__float__'):
+                            d[k] = float(v)
+                    result[code] = d
+                return result
+        except Exception as e:
+            logger.warning("Failed to load fee cache from DB: %s", e)
+            return {}
+        finally:
+            self._pool.putconn(conn)
+
+    def save_fee_cache(self, data: Dict[str, Dict]) -> None:
+        """批量写入费率缓存到数据库（upsert）"""
+        if not data:
+            return
+        rows = []
+        for code, fee in data.items():
+            fetched_at = fee.get("fetched_at")
+            if fetched_at is not None:
+                fetched_at = datetime.fromtimestamp(fetched_at)
+            rows.append((
+                code,
+                fee.get("purchase_fee_rate"),
+                fee.get("redemption_fee_rate"),
+                fee.get("purchase_limit"),
+                fee.get("can_purchase"),
+                fetched_at,
+            ))
+        conn = self._pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO fee_cache
+                        (code, purchase_fee_rate, redemption_fee_rate,
+                         purchase_limit, can_purchase, fetched_at)
+                    VALUES %s
+                    ON CONFLICT (code) DO UPDATE SET
+                        purchase_fee_rate  = EXCLUDED.purchase_fee_rate,
+                        redemption_fee_rate = EXCLUDED.redemption_fee_rate,
+                        purchase_limit     = EXCLUDED.purchase_limit,
+                        can_purchase       = EXCLUDED.can_purchase,
+                        fetched_at         = EXCLUDED.fetched_at
+                    """,
+                    rows,
+                    page_size=500,
+                )
+            conn.commit()
+            logger.info("Saved %d fee cache entries to DB", len(rows))
+        except Exception as e:
+            logger.error("Failed to save fee cache: %s", e)
+            conn.rollback()
+        finally:
+            self._pool.putconn(conn)
+
+    def load_suspension_cache(self) -> Dict[str, bool]:
+        """从数据库加载停牌状态缓存，返回 {code: is_suspended}"""
+        conn = self._pool.getconn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT code, is_suspended FROM suspension_cache")
+                return {r["code"]: r["is_suspended"] for r in cur.fetchall()}
+        except Exception as e:
+            logger.warning("Failed to load suspension cache: %s", e)
+            return {}
+        finally:
+            self._pool.putconn(conn)
+
+    def save_suspension_cache(self, data: Dict[str, bool]) -> None:
+        """批量写入停牌状态到数据库（upsert）"""
+        if not data:
+            return
+        rows = [(code, suspended) for code, suspended in data.items()]
+        conn = self._pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO suspension_cache (code, is_suspended)
+                    VALUES %s
+                    ON CONFLICT (code) DO UPDATE SET
+                        is_suspended = EXCLUDED.is_suspended,
+                        updated_at   = NOW()
+                    """,
+                    rows,
+                    page_size=500,
+                )
+            conn.commit()
+            logger.info("Saved %d suspension entries to DB", len(rows))
+        except Exception as e:
+            logger.error("Failed to save suspension cache: %s", e)
+            conn.rollback()
+        finally:
+            self._pool.putconn(conn)
 
     def _cleanup(self):
         """清理超过 RETENTION_DAYS 的历史数据"""

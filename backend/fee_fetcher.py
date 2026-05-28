@@ -10,7 +10,7 @@ Fetches per-fund fee rates from East Money:
 These values change rarely (monthly or less), so they are cached
 and refreshed on a longer interval than price/NAV data.
 """
-import re, json, time, structlog, threading, os
+import re, time, structlog, threading
 from typing import Dict, Optional, Any
 import requests
 from requests.adapters import HTTPAdapter
@@ -27,9 +27,7 @@ _FEE_HEADERS = {
     "Accept-Language": "zh-CN,zh;q=0.9",
 }
 
-# Cache file path (same directory as this file)
-_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fee_cache.json")
-_CACHE_VERSION = 2  # increment when parser logic changes
+_CACHE_TTL_SECONDS = 86400  # 24 hours — fee/limit data changes rarely
 
 
 def _make_session() -> requests.Session:
@@ -164,18 +162,31 @@ def fetch_fee_for_code(code: str, session: requests.Session) -> Dict[str, Any]:
 
 def fetch_fees_batch(codes: list, concurrency: int = 10) -> Dict[str, Dict[str, Any]]:
     """
-    Batch fetch fee data for multiple fund codes.
-    Uses concurrent threads for speed.
-    Returns: {code: {purchase_fee_rate, redemption_fee_rate, purchase_limit}}
+    Batch fetch fee data with TTL-based incremental refresh.
+    Only re-fetches funds whose cached data is older than _CACHE_TTL_SECONDS.
+    Returns: {code: {purchase_fee_rate, redemption_fee_rate, purchase_limit, can_purchase}}
     """
-    # 每次刷新时清除旧缓存，确保新数据被完整重建
-    if os.path.exists(_CACHE_PATH):
-        try:
-            os.remove(_CACHE_PATH)
-        except Exception:
-            pass
+    now = time.time()
 
-    result: Dict[str, Dict[str, Any]] = {}
+    # Load existing cache as baseline (don't delete it!)
+    result = load_fee_cache()
+
+    # Identify which funds need fetching: missing or stale
+    to_fetch = []
+    for code in codes:
+        cached = result.get(code)
+        if not cached or not cached.get("fetched_at"):
+            to_fetch.append(code)
+        elif now - cached["fetched_at"] > _CACHE_TTL_SECONDS:
+            to_fetch.append(code)
+
+    if not to_fetch:
+        logger.info("fee_cache_hit", cached=len(result), total=len(codes))
+        return result
+
+    logger.info("fee_fetch_start", stale=len(to_fetch), cached=len(result) - len(to_fetch), total=len(codes))
+
+    fetched: Dict[str, Dict[str, Any]] = {}
     lock = threading.Lock()
     sem = threading.Semaphore(concurrency)
     session = _make_session()
@@ -184,15 +195,15 @@ def fetch_fees_batch(codes: list, concurrency: int = 10) -> Dict[str, Dict[str, 
         with sem:
             try:
                 fee_data = fetch_fee_for_code(code, session)
+                fee_data["fetched_at"] = time.time()
                 with lock:
-                    result[code] = fee_data
+                    fetched[code] = fee_data
             except Exception:
                 pass
-            # Small delay to avoid rate limiting
             time.sleep(0.05)
 
     threads = []
-    for code in codes:
+    for code in to_fetch:
         t = threading.Thread(target=fetch_one, args=(code,))
         t.start()
         threads.append(t)
@@ -204,29 +215,30 @@ def fetch_fees_batch(codes: list, concurrency: int = 10) -> Dict[str, Dict[str, 
     for tt in threads:
         tt.join()
 
-    logger.info("fee_data_fetched", fetched=len(result), total=len(codes))
+    # Merge fresh data into result
+    result.update(fetched)
+
+    # Persist merged cache (includes both fresh and cached entries)
+    save_fee_cache(result)
+
+    logger.info("fee_fetch_done", fetched=len(fetched), cached=len(result) - len(fetched), total=len(result))
     return result
 
 
 def load_fee_cache() -> Dict[str, Dict[str, Any]]:
-    """Load fee data from local cache file. Returns empty if version mismatch."""
-    if not os.path.exists(_CACHE_PATH):
-        return {}
+    """Load fee data from PostgreSQL (persists across deployments)."""
     try:
-        with open(_CACHE_PATH, "r", encoding="utf-8") as f:
-            cached = json.load(f)
-        if isinstance(cached, dict) and cached.get("version") == _CACHE_VERSION:
-            return cached.get("data", {})
-        # Version mismatch: discard old cache
-        return {}
-    except Exception:
+        from history_db import get_history_db
+        return get_history_db().load_fee_cache()
+    except Exception as ex:
+        logger.warning("fee_cache_load_failed", error=str(ex))
         return {}
 
 
 def save_fee_cache(data: Dict[str, Dict[str, Any]]) -> None:
-    """Save fee data to local cache file."""
+    """Save fee data to PostgreSQL."""
     try:
-        with open(_CACHE_PATH, "w", encoding="utf-8") as f:
-            json.dump({"version": _CACHE_VERSION, "data": data}, f, ensure_ascii=False)
+        from history_db import get_history_db
+        get_history_db().save_fee_cache(data)
     except Exception as ex:
         logger.warning("fee_cache_save_failed", error=str(ex))

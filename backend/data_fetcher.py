@@ -17,7 +17,7 @@ import requests
 
 from config import Config
 from history_db import get_history_db
-from fee_fetcher import fetch_fees_batch, load_fee_cache, save_fee_cache
+from fee_fetcher import fetch_fees_batch, load_fee_cache
 from datasource.manager import get_datasource_manager
 
 logger = logging.getLogger(__name__)
@@ -277,13 +277,9 @@ class LOFDataFetcher:
                 if "can_purchase" not in fund:
                     fund["can_purchase"] = None
 
-            # Step 5: 费率数据
-            # 每次刷新都重新抓取，不使用磁盘缓存（数据稳定性优先）
-            fee_cache = {}
+            # Step 5: 费率数据（TTL 增量刷新，内部管理缓存）
             try:
-                fee_data = fetch_fees_batch(list(enriched.keys()), concurrency=10)
-                fee_cache = fee_data
-                save_fee_cache(fee_cache)
+                fee_cache = fetch_fees_batch(list(enriched.keys()), concurrency=10)
             except Exception as ex:
                 logger.warning("Fee batch fetch failed: %s", ex)
                 fee_cache = load_fee_cache()
@@ -293,9 +289,21 @@ class LOFDataFetcher:
                 fund["purchase_fee_rate"] = fee.get("purchase_fee_rate")
                 fund["redemption_fee_rate"] = fee.get("redemption_fee_rate")
                 fund["purchase_limit"] = fee.get("purchase_limit")
-                # jjfl 申购状态作为 fallback（已有 ak_share 数据时优先用 ak_share）
-                if fund.get("can_purchase") is None:
-                    fund["can_purchase"] = fee.get("can_purchase")
+                # jjfl 申购状态优先（比 lsjz API 更准确，能区分"暂停申购"和"限制大额"）
+                jjfl_status = fee.get("can_purchase")
+                if jjfl_status is not None:
+                    fund["can_purchase"] = jjfl_status
+                elif fund.get("can_purchase") is None:
+                    fund["can_purchase"] = None
+
+            # Step 6: 加载昨日成交额（用于筛选时取 max，避免盘中早期成交额过低被过滤）
+            try:
+                hdb = get_history_db()
+                prev_amounts = hdb.get_prev_amounts()
+                for code, fund in enriched.items():
+                    fund["prev_amount"] = prev_amounts.get(code)
+            except Exception as ex:
+                logger.warning("Prev amount load skipped: %s", ex)
 
             # 更新缓存
             with self._lock:
