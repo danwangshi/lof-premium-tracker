@@ -44,12 +44,12 @@ class LofFundMonitor {
             this.showUnpurchasable = localStorage.getItem('lof_showUnpurchasable_v2') === '1';
             this.commissionRate = parseFloat(localStorage.getItem('lof_commissionRate')) || 1.5;
             this.commissionMin = parseFloat(localStorage.getItem('lof_commissionMin')) || 5;
-            this.maxCapital = parseFloat(localStorage.getItem('lof_maxCapital')) || 1000;
+            this.maxCapital = parseFloat(localStorage.getItem('lof_maxCapital')) || 10000;
             this.darkMode = localStorage.getItem('lof_darkMode') || 'light';
         } catch (e) {
             this.threshold = 0; this.avgThreshold = 0; this.minAmount = 100;
             this.showSuspended = false; this.showUnpurchasable = false;
-            this.commissionRate = 1.5; this.commissionMin = 5; this.maxCapital = 1000;
+            this.commissionRate = 1.5; this.commissionMin = 5; this.maxCapital = 10000;
             this.darkMode = 'light';
         }
         this.pageMode = (typeof window.LOF_PAGE_MODE !== 'undefined') ? window.LOF_PAGE_MODE : 'normal';
@@ -510,7 +510,7 @@ class LofFundMonitor {
             case 'nav_date':
                 return '<td class="col-time">' + (fund.nav_date || '-') + '</td>';
             case 'volume':
-                var vol = (fund.volume != null) ? (fund.volume / 10000).toFixed(2) + '万手' : '--';
+                var vol = (fund.volume != null) ? (fund.volume < 100000 ? fund.volume.toLocaleString() + '手' : (fund.volume / 10000).toFixed(2) + '万手') : '--';
                 return '<td class="col-volume">' + vol + '</td>';
             case 'change_amount':
                 var ca = (fund.change_amount != null) ? fund.change_amount.toFixed(4) : '--';
@@ -2005,9 +2005,8 @@ class LofFundMonitor {
             }
         }
 
-        setVal('fdNavDate', fund.nav_date || '-');
         // 新增字段
-        setVal('fdVolume', fund.volume != null ? (fund.volume / 10000).toFixed(2) + '万手' : '--');
+        setVal('fdVolume', fund.volume != null ? (fund.volume < 100000 ? fund.volume.toLocaleString() + '手' : (fund.volume / 10000).toFixed(2) + '万手') : '--');
         setVal('fdChangeAmount', fund.change_amount != null ? fund.change_amount.toFixed(4) : '--');
         setVal('fdSuspended', fund.is_suspended ? '停牌' : '正常');
         setVal('fdPurchaseFee', fund.purchase_fee_rate != null ? fund.purchase_fee_rate.toFixed(2) + '%' : '--');
@@ -2021,7 +2020,6 @@ class LofFundMonitor {
         setVal('fdAum', fund.aum != null ? fund.aum.toFixed(2) + '亿' : '--');
         setVal('fdRedeemStatus', fund.redeem_status === 'open' ? '开放赎回' : fund.redeem_status === 'suspended' ? '暂停赎回' : (fund.redeem_status || '--'));
         setVal('fdRedemptionFee', fund.redemption_fee_rate != null ? fund.redemption_fee_rate.toFixed(2) + '%' : '--');
-        setVal('fdFetchedAt', fund.fetched_at ? this.formatTime(fund.fetched_at) : '--');
         setVal('fdAmplitude', fund.amplitude != null ? fund.amplitude.toFixed(2) + '%' : '--');
         setVal('fdFloatMarketCap', fund.float_market_cap != null ? fund.float_market_cap.toFixed(2) + '亿' : '--');
         setVal('fdTotalMarketCap', fund.total_market_cap != null ? fund.total_market_cap.toFixed(2) + '亿' : '--');
