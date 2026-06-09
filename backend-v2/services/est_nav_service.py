@@ -129,6 +129,7 @@ async def save_est_nav_snapshot(client: httpx.AsyncClient) -> int:
     """
     收盘后保存估算净值快照到数据库。
     复用 run_est_nav 的计算逻辑，将结果写入 fund_est_nav 表。
+    trade_date 为今日（估算净值是当日盘中基于昨日净值计算的）。
     返回保存的记录数。
     """
     from processors.saver import save_est_nav_batch
@@ -140,6 +141,7 @@ async def save_est_nav_snapshot(client: httpx.AsyncClient) -> int:
         return 0
 
     trade_date = beijing_today_date()
+    sf = database.async_session_factory
     records = []
     for fc, info in data.items():
         records.append({
