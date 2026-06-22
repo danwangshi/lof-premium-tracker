@@ -23,6 +23,7 @@ docker/logs/
 # IDE
 .vscode/
 .idea/
+.lingma/
 *.swp
 *.swo
 *~

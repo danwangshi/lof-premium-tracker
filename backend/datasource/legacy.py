@@ -276,7 +276,7 @@ class LegacySource(LOFDataSource):
                 f"&ut=bd1d9ddb04089700cf9c27f6f7426281"
                 f"&fltt=2&invt=2&fid=f3"
                 f"&fs=m:1+t:9"
-                f"&fields=f12,f14,f2,f3,f5,f20"
+                f"&fields=f12,f14,f2,f3,f5,f6,f20"
             )
             resp = None
             for attempt in range(3):
@@ -322,7 +322,7 @@ class LegacySource(LOFDataSource):
                     "price": price,
                     "change_pct": round(_safe_float(item.get("f3"), 0), 3),
                     "volume": int(_safe_float(item.get("f5"), 0)),
-                    "amount": round(_safe_float(item.get("f20"), 0), 2),
+                    "amount": round(_safe_float(item.get("f6"), 0), 2),
                 }
             if len(seen) >= total:
                 break

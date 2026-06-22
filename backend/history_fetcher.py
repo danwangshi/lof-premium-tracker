@@ -151,8 +151,14 @@ def fetch_kline_tencent(session: requests.Session, code: str) -> Dict[str, dict]
             if len(line) < 6:
                 continue
             date = line[0]
+            open_p = _safe_float(line[1])
             price = _safe_float(line[2])  # close
-            amount = _safe_float(line[5]) * 100  # volume * 100 = 成交额(元)
+            high = _safe_float(line[3])
+            low = _safe_float(line[4])
+            vol = _safe_float(line[5])  # 成交量（手）
+            # 成交额 ≈ 典型价格 × 成交股数（腾讯K线无成交额字段，用均价估算）
+            typical_price = (open_p + price + high + low) / 4 if (open_p + price + high + low) > 0 else price
+            amount = round(typical_price * vol * 100, 2)  # 手→股 × 价格 = 元
             change_pct = 0
             if price <= 0:
                 continue
