@@ -133,6 +133,13 @@ class LofFundMonitor {
             option.textContent = text;
             select.appendChild(option);
         });
+
+        // 默认勾选除"暂停申购"以外的所有选项
+        Array.from(select.options).forEach(opt => {
+            if (opt.value !== '' && opt.value !== 'suspended') {
+                opt.selected = true;
+            }
+        });
     }
 
     async loadFunds() {
