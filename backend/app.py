@@ -1326,10 +1326,12 @@ def manual_wework_notify():
         premium_funds.sort(key=lambda x: x['rate'], reverse=True)
         discount_funds.sort(key=lambda x: abs(x['rate']), reverse=True)
         
-        # 构建报告内容
-        from datetime import datetime
-        current_date = datetime.now().strftime('%Y-%m-%d')
-        current_time = datetime.now().strftime('%H:%M')
+        # 构建报告内容（使用东八区时间）
+        from datetime import datetime, timezone, timedelta
+        cst = timezone(timedelta(hours=8))
+        now_cst = datetime.now(cst)
+        current_date = now_cst.strftime('%Y-%m-%d')
+        current_time = now_cst.strftime('%H:%M')
         
         content = f"📊 LOF基金日报 ({current_date} {current_time})\n"
         content += "━━━━━━━━━━━━━━━━━━━━━━\n"

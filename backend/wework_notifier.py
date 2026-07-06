@@ -220,9 +220,10 @@ class WeWorkNotifier:
     
     @staticmethod
     def _get_current_time() -> str:
-        """获取当前时间字符串"""
-        from datetime import datetime
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        """获取当前时间字符串（东八区）"""
+        from datetime import datetime, timezone, timedelta
+        cst = timezone(timedelta(hours=8))
+        return datetime.now(cst).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def create_notifier_from_env() -> Optional[WeWorkNotifier]:
