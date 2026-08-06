@@ -20,6 +20,7 @@ from history_db import get_history_db
 from fee_fetcher import fetch_fees_batch, load_fee_cache, save_fee_cache
 from datasource.manager import get_datasource_manager
 from datasource.share_source import get_share_source
+from estimator import estimate_funds
 
 logger = logging.getLogger(__name__)
 
@@ -193,12 +194,40 @@ class LOFDataFetcher:
             enriched = self._ds.fetch_nav_batch(funds_list)
             logger.info("NAV enriched: %d funds", len(enriched))
 
-            # Step 3: 溢价率计算
+            # Step 2.5: 盘中估算净值（QDII汇率修正 / 境内指数修正 / 主动标注滞后）
+            estimates = estimate_funds(list(enriched.values()))
+
+            # Step 3: 溢价率计算（净值滞后时用估算净值，避免滞后污染）
             for fund in enriched.values():
                 price = fund.get("price", 0)
                 nav = fund.get("nav")
                 if price > 0 and nav and nav > 0:
-                    prem = round((price - nav) / nav * 100, 3)
+                    est = estimates.get(fund.get("code", ""), {})
+                    est_source = est.get("est_source", "formal_lag")
+                    est_nav = est.get("est_nav")
+                    fund["nav_lag_days"] = est.get("nav_lag_days", 0)
+                    fund["index_secid"] = est.get("index_secid")
+
+                    # 估算型（fx/fx+hk/fx+idx/index/commodity/holdings）：用估算净值算溢价，标注"估算"
+                    if est_source in ("fx", "fx+hk", "fx+idx", "index", "commodity", "holdings") and est_nav and est_nav > 0:
+                        fund["est_nav"] = round(est_nav, 4)
+                        fund["est_source"] = est_source
+                        fund["is_formal_nav"] = False
+                        # 估算目标日（前端"估算净值"列的日期）＝数据抓取日；官方净值基准日仍见 nav_date
+                        fund["est_date"] = datetime.now().strftime("%Y-%m-%d")
+                        eff_nav = est_nav
+                    elif est_source == "formal":
+                        fund["est_nav"] = None
+                        fund["est_source"] = "formal"
+                        fund["is_formal_nav"] = True
+                        eff_nav = nav
+                    else:  # formal_lag / none：净值滞后但无匹配指数
+                        fund["est_nav"] = None
+                        fund["est_source"] = "formal_lag" if est_source == "formal_lag" else "none"
+                        fund["is_formal_nav"] = False
+                        eff_nav = nav
+
+                    prem = round((price - eff_nav) / eff_nav * 100, 3)
                     fund["premium_rate"] = prem
                     fund["premium_status"] = "溢价" if prem > 0 else "折价" if prem < 0 else "平价"
                 else:
@@ -209,6 +238,9 @@ class LOFDataFetcher:
                         fund["nav"] = cached["nav"]
                         fund["nav_date"] = cached.get("nav_date")
                         fund["is_formal_nav"] = cached.get("is_formal_nav", True)
+                        fund["est_nav"] = cached.get("est_nav")
+                        fund["est_source"] = cached.get("est_source")
+                        fund["nav_lag_days"] = cached.get("nav_lag_days", 0)
                         fund["premium_rate"] = cached["premium_rate"]
                         fund["premium_status"] = cached["premium_status"]
                         old_nav = cached["nav"]

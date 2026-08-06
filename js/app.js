@@ -437,12 +437,23 @@ class LofFundMonitor {
         const changeText = fund.change_pct !== null && fund.change_pct !== undefined ? changeSign + fund.change_pct.toFixed(2) + '%' : '--';
 
         const navType = fund.is_formal_nav ? '正式' : '估算';
-        let navText = fund.nav !== null && fund.nav !== undefined ? fund.nav.toFixed(3) : '--';
+        // 净值显示：有盘中估算值时显示估算值，否则显示官方净值
+        const displayNav = (fund.est_nav != null && fund.est_nav !== undefined) ? fund.est_nav : fund.nav;
+        let navText = displayNav != null && displayNav !== undefined ? displayNav.toFixed(3) : '--';
         // 将净值时间显示在净值下方
         if (fund.nav_date) {
             // 提取日期部分，格式：2026-05-16
             const datePart = fund.nav_date.split(' ')[0];
-            navText += `<div class="nav-date">${datePart}</div>`;
+            // 估算型：日期显示"估算目标日"(est_date=抓取日)；官方净值基准日移入 tooltip，避免与"估算净值"标题语义冲突
+            const isEstNav = (fund.est_nav != null && fund.est_nav !== undefined);
+            const showDate = (isEstNav && fund.est_date) ? fund.est_date : datePart;
+            const tip = isEstNav ? `基于 ${datePart} 官方净值估算` : '';
+            navText += `<div class="nav-date"${tip ? ` title="${tip}"` : ''}>${showDate}</div>`;
+        }
+        // 官方净值滞后标注（无估算来源时提示溢价率仅供参考）
+        if (!fund.is_formal_nav && fund.nav_lag_days > 0
+            && (fund.est_source === 'formal_lag' || fund.est_source === 'none')) {
+            navText += `<div class="nav-lag" title="官方净值滞后${fund.nav_lag_days}天，溢价率仅供参考">滞后${fund.nav_lag_days}天</div>`;
         }
         const priceText = fund.price !== null && fund.price !== undefined ? fund.price.toFixed(3) : '--';
 
@@ -1353,14 +1364,33 @@ class LofFundMonitor {
         setVal('fdName', fund.name); isCopy('fdName');
         setVal('fdPrice', fund.price != null ? fund.price.toFixed(3) : null);
         
-        // 净值：不显示"正式"/"估算"标签
-        setVal('fdNav', fund.nav != null ? fund.nav.toFixed(3) : null);
-        
+        // 净值：有盘中估算值时显示估算值，否则显示官方净值
+        const displayNav = (fund.est_nav != null && fund.est_nav !== undefined) ? fund.est_nav : fund.nav;
+        setVal('fdNav', displayNav != null ? displayNav.toFixed(3) : null);
+
         // 净值日期
         const navDateEl = document.getElementById('fdNavDate');
-        if (navDateEl && fund.nav_date) {
-            const datePart = fund.nav_date.split(' ')[0];
-            navDateEl.textContent = datePart;
+        if (navDateEl) {
+            const baseDate = fund.nav_date ? fund.nav_date.split(' ')[0] : '';
+            // 估算型：日期显示估算目标日；官方净值基准日放 title
+            const isEstNav = (fund.est_nav != null && fund.est_nav !== undefined);
+            navDateEl.textContent = (isEstNav && fund.est_date) ? fund.est_date : baseDate;
+            navDateEl.title = (isEstNav && baseDate) ? `基于 ${baseDate} 官方净值估算` : '';
+        }
+
+        // 净值标注：盘中估算 / 滞后
+        const fdNavTag = document.getElementById('fdNavTag');
+        if (fdNavTag) {
+            if (!fund.is_formal_nav
+                && (fund.est_source === 'fx' || fund.est_source === 'fx+hk'
+                    || fund.est_source === 'fx+idx' || fund.est_source === 'index'
+                    || fund.est_source === 'commodity' || fund.est_source === 'holdings')) {
+                fdNavTag.textContent = '盘中估算';
+            } else if (!fund.is_formal_nav && fund.nav_lag_days > 0) {
+                fdNavTag.textContent = '滞后' + fund.nav_lag_days + '天';
+            } else {
+                fdNavTag.textContent = '';
+            }
         }
         
         setVal('fdChangePct', cp != null ? cpSign + cp.toFixed(2) + '%' : null, cpCls);

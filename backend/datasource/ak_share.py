@@ -50,6 +50,11 @@ _LSJZ_HEADERS = {
     "Accept": "*/*",
 }
 
+# fundgz 接口已失效（返回 HTML 而非 JSONP），首次检测到后熔断，
+# 避免每轮刷新对数百只基金重复发起无效请求
+_FUNDGZ_DEAD = False
+_FUNDGZ_DEAD_LOCK = threading.Lock()
+
 
 class AkShareSource(LOFDataSource):
     """主数据源：使用 AkShare 获取 LOF 基金数据"""
@@ -268,12 +273,24 @@ class AkShareSource(LOFDataSource):
 
     def _fetch_nav_from_fundgz(self, code: str) -> Dict[str, Any]:
         """fundgz + lsjz 交叉验证，盘中优先用估算净值(gsz)"""
+        global _FUNDGZ_DEAD
+        if _FUNDGZ_DEAD:
+            return self._fetch_nav_from_lsjz(code)
+
         url = Config.FUND_NAV_URL.format(code=code)
         try:
             resp = self._sess().get(url, headers=_FUNDGZ_HEADERS, timeout=Config.REQUEST_TIMEOUT)
             resp.encoding = "utf-8"
             text = resp.text.strip()
         except Exception:
+            return self._fetch_nav_from_lsjz(code)
+
+        # fundgz 失效熔断：接口已改返回 HTML 而非 JSONP
+        if text.lstrip().lower().startswith(("<", "!doctype")):
+            with _FUNDGZ_DEAD_LOCK:
+                if not _FUNDGZ_DEAD:
+                    _FUNDGZ_DEAD = True
+                    logger.warning("fundgz 接口已失效(返回HTML)，熔断启用，后续直接使用 lsjz")
             return self._fetch_nav_from_lsjz(code)
 
         m = re.search(r"\((.+)\)\s*;?\s*$", text, re.DOTALL)
@@ -337,7 +354,8 @@ class AkShareSource(LOFDataSource):
         return {"nav": None, "nav_date": None, "is_formal_nav": False}
 
     def _fetch_nav_from_lsjz(self, code: str) -> Dict[str, Any]:
-        url = f"https://api.fund.eastmoney.com/f10/lsjz?fundCode={code}&pageIndex=1&pageSize=1"
+        # pageSize=2 取第二条作为 prev_nav（此前误用当天净值）
+        url = f"https://api.fund.eastmoney.com/f10/lsjz?fundCode={code}&pageIndex=1&pageSize=2"
         try:
             resp = self._sess().get(url, headers=_LSJZ_HEADERS, timeout=Config.REQUEST_TIMEOUT)
             resp.encoding = "utf-8"
@@ -348,6 +366,7 @@ class AkShareSource(LOFDataSource):
             if not lsjz_list:
                 return {"nav": None, "nav_date": None, "is_formal_nav": False, "can_purchase": None}
             latest = lsjz_list[0]
+            prev = lsjz_list[1] if len(lsjz_list) > 1 else latest
             nav_str = latest.get("DWJZ")
             date_str = latest.get("FSRQ")
             sgzt = latest.get("SGZT", "")
@@ -357,9 +376,10 @@ class AkShareSource(LOFDataSource):
             nav = _safe_float(nav_str)
             if nav <= 0:
                 return {"nav": None, "nav_date": None, "is_formal_nav": False, "can_purchase": can_purchase}
+            prev_nav = _safe_float(prev.get("DWJZ"), nav)
             return {
                 "nav": round(nav, 4),
-                "prev_nav": round(nav, 4),
+                "prev_nav": round(prev_nav, 4),
                 "nav_date": date_str or None,
                 "is_formal_nav": True,
                 "can_purchase": can_purchase,

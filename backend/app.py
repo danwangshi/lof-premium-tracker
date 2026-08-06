@@ -126,9 +126,14 @@ def _fmt(fund: dict, detail: bool = False) -> dict:
         "volume":     fund.get("volume"),            # 成交量（股）
         "amount":     fund.get("amount"),            # 成交额（元）
         # ── 净值数据 ──
-        "nav":        nav,                          # 当前净值/估算净值（元）
-        "nav_date":   fund.get("nav_date"),         # 净值日期/估值时间
-        "is_formal_nav": fund.get("is_formal_nav", False),  # 是否盘后正式净值
+        "nav":        nav,                          # 官方净值（元）
+        "nav_date":   fund.get("nav_date"),         # 官方净值日期
+        "is_formal_nav": fund.get("is_formal_nav", False),  # 溢价率基于正式净值
+        "est_nav":    fund.get("est_nav"),          # 盘中估算净值（元），None=用官方净值
+        "est_source": fund.get("est_source"),       # formal/fx/fx+hk/fx+idx/index/formal_lag/none
+        "nav_lag_days": fund.get("nav_lag_days", 0),  # 官方净值滞后最近交易日天数
+        "index_secid": fund.get("index_secid"),      # 匹配到的跟踪指数 secid（估算型时有值）
+        "est_date": fund.get("est_date"),            # 估算目标日（估算型=数据抓取日；formal 型为 None）
         # ── 溢价分析 ──
         "premium_rate":  premium,                   # 溢价率（%），正=溢价，负=折价
         "premium_status": fund.get("premium_status"),  # 溢价/折价/平价
@@ -1060,6 +1065,17 @@ def send_shares_update_notification(shares_count: int, date: str):
 # 初始化企业微信通知器
 init_wework_notifier()
 
+# 定时任务包装函数：在 Flask 应用上下文中执行基金日报发送
+def _scheduled_wework_notify():
+    """APScheduler 定时任务调用的包装函数，确保在 Flask 应用上下文中执行"""
+    try:
+        with app.app_context():
+            manual_wework_notify()
+    except Exception as e:
+        logger.error(f"定时企业微信通知失败: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
+
 # 初始化定时任务（支持多个时间）
 def init_wework_schedule():
     """初始化企业微信定时任务（从环境变量读取配置）"""
@@ -1113,7 +1129,7 @@ def init_wework_schedule():
             # 添加定时通知任务
             job_id = f'wework_notify_{hour:02d}{minute:02d}'
             scheduler.add_job(
-                func=lambda: manual_wework_notify(),
+                func=_scheduled_wework_notify,
                 trigger='cron',
                 hour=hour,
                 minute=minute,

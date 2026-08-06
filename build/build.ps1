@@ -5,12 +5,14 @@ param(
     [string]$Version = "latest"
 )
 
-# 配置
+# 配置（全部基于脚本位置解析为绝对路径，避免子进程 cwd 与 PowerShell $PWD 不同步导致导出失败）
+$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot = Split-Path -Parent $ScriptRoot
 $ImageName = "danwangshi/lof-fund-app"
 $ImageTag = $Version
 $FullImageName = "${ImageName}:${ImageTag}"
-$ExportDir = "docker/images"
-$ExportFile = "${ExportDir}/danwangshi-lof-fund-app-${ImageTag}.tar"
+$ExportDir = Join-Path $ProjectRoot "docker/images"
+$ExportFile = Join-Path $ExportDir "danwangshi-lof-fund-app-${ImageTag}.tar"
 
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  Docker 构建和导出脚本" -ForegroundColor Green
@@ -18,7 +20,7 @@ Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 
 # 检查是否在正确的目录
-if (-not (Test-Path "build/Dockerfile")) {
+if (-not (Test-Path (Join-Path $ProjectRoot "build/Dockerfile"))) {
     Write-Host "错误: 请在项目根目录运行此脚本" -ForegroundColor Red
     exit 1
 }
@@ -33,7 +35,7 @@ Write-Host "镜像名称: $FullImageName"
 
 try {
     # 尝试使用 docker compose 构建
-    docker compose -f build/docker-compose.build.yml build
+    docker compose -f (Join-Path $ProjectRoot "build/docker-compose.build.yml") build
     if ($LASTEXITCODE -ne 0) {
         throw "Docker Compose build failed"
     }
@@ -42,7 +44,7 @@ try {
     docker tag danwangshi/lof-fund-app:latest $FullImageName
 } catch {
     Write-Host "Docker Compose 构建失败，尝试直接使用 Dockerfile..." -ForegroundColor Yellow
-    docker build -f build/Dockerfile -t $FullImageName .
+    docker build -f (Join-Path $ProjectRoot "build/Dockerfile") -t $FullImageName $ProjectRoot
     if ($LASTEXITCODE -ne 0) {
         Write-Host "错误: 镜像构建失败" -ForegroundColor Red
         exit 1
