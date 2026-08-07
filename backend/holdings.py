@@ -114,8 +114,14 @@ def fetch_holdings(code: str, retries: int = 3) -> Optional[dict]:
                     return None
             except ValueError:
                 return None
+            # jjcc 页面同时含"上季度+本季度"两个表格，只解析当前（最新）截止日
+            # 所在区间，避免混入上季度持仓（曾导致权重合计 >100%，如 501085）
+            cut_end = content.find("截止至", m_date.end())
+            if cut_end == -1:
+                cut_end = len(content)
+            section = content[m_date.start():cut_end]
             stocks: List[dict] = []
-            for row in re.findall(r"<tr>.*?</tr>", content, re.S):
+            for row in re.findall(r"<tr>.*?</tr>", section, re.S):
                 if "unify/r/" not in row:
                     continue
                 secid_m = re.search(r"unify/r/([\d.]+)", row)
