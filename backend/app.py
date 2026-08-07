@@ -96,6 +96,13 @@ def _is_suspended(fund: dict) -> bool:
     return False
 
 
+def _is_zombie(fund: dict) -> bool:
+    """判断是否僵尸基金：官方净值停止更新 >180 天。
+    多为已清盘/转型/停更多年的老基金，无场内交易参考价值，从列表展示中隐藏。
+    正常活跃基金净值滞后 ≤7 天，8~180 天区间为空，此阈值不误伤正常基金。"""
+    return (fund.get("nav_lag_days") or 0) > 180
+
+
 def _fmt(fund: dict, detail: bool = False) -> dict:
     """
     统一格式化输出字段
@@ -337,6 +344,9 @@ def list_funds():
             details={"tip": "首次启动约需 1-2 分钟加载全量数据"}
         )
 
+    # 隐藏僵尸基金（净值停止更新 >180 天）：已清盘/转型，无实时交易参考价值
+    all_data = {k: v for k, v in all_data.items() if not _is_zombie(v)}
+
     # ── 分页参数 ──
     try:
         page     = max(1, int(request.args.get("page", 1)))
@@ -485,7 +495,9 @@ def get_purchase_limits():
     """获取所有申购限额选项（用于下拉多选）"""
     f = get_fetcher()
     all_data = f.get_all()
-    
+    # 过滤僵尸基金，与列表页展示保持一致
+    all_data = {k: v for k, v in all_data.items() if not _is_zombie(v)}
+
     # 收集所有不同的申购限额值
     limits_set = set()
     has_suspended = False
