@@ -732,8 +732,8 @@ def estimate_funds(funds: List[Dict]) -> Dict[str, dict]:
         if f["code"] in need_index or f["code"] in need_commodity:
             continue
         name = f["name"]
-        if name.startswith("184"):
-            continue  # 老封基，无场内交易意义
+        if f["code"].startswith("184"):
+            continue  # 老封基，无场内交易意义（用 code 判断，name 是中文名）
         if "QDII" in name.upper():
             continue  # QDII 持仓海外，jjcc 无 A 股，不参与持仓估值
         is_bond = any(w in name for w in holdings.BOND_HINTS)
