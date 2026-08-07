@@ -574,6 +574,12 @@ class LofFundMonitor {
         const premiumSign = pr > 0 ? '+' : '';
         const premiumText = pr !== null && pr !== undefined ? premiumSign + pr.toFixed(2) + '%' : '--';
         const statusText = fund.premium_status || '未知';
+        // 官方净值滞后标注（无估算来源时提示溢价率仅供参考）
+        let lagText = '';
+        if (!fund.is_formal_nav && fund.nav_lag_days > 0
+            && (fund.est_source === 'formal_lag' || fund.est_source === 'none')) {
+            lagText = `<span class="nav-lag" title="官方净值滞后${fund.nav_lag_days}天，溢价率仅供参考">滞后${fund.nav_lag_days}天</span>`;
+        }
         // 千元可赚
         const est = this.calcEstimatedProfit(fund);
         let profitText = '--', profitClass = '';
@@ -623,6 +629,7 @@ class LofFundMonitor {
                 <span class="mc-code">${fund.code}</span>
                 <span class="mc-name">${this.truncateName(fund.name, 8)}</span>
                 <span class="mc-status-badge status-badge ${fund.premium_status || ''}">${statusText}</span>
+                ${lagText}
             </div>
             <div class="mc-right">
                 <span class="mc-premium ${premiumClass}">${premiumText}</span>
