@@ -57,6 +57,8 @@ services:
       - WEWORK_SCHEDULE_TIMES=${WEWORK_SCHEDULE_TIMES:-07:00,08:00}
       - WEWORK_PREMIUM_THRESHOLD=${WEWORK_PREMIUM_THRESHOLD:-3.0}
       - WEWORK_DISCOUNT_THRESHOLD=${WEWORK_DISCOUNT_THRESHOLD:-1.5}
+      # 反爬代理（可选）：直连失败时经 XK_PROXY_API_URL 取动态代理重试
+      - XK_PROXY_API_URL=${XK_PROXY_API_URL:-}
     depends_on:
       postgres:
         condition: service_healthy

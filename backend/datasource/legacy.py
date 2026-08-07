@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-后备数据源 — 封装东方财富 / 腾讯 / 天天基金等原有 API
-当主数据源 (AkShare) 不可用时自动降级使用
+主数据源 — 封装东方财富 / 腾讯 / 天天基金等直连 API
+（SSE 行情走东财 clist，SZ 行情走腾讯 qt，净值走 fundgz/lsjz）
 """
 import json
 import logging

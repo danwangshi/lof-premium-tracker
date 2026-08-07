@@ -307,7 +307,7 @@ def fetch_historical_data(days: int = 7) -> int:
     def process_one(code: str):
         with sem:
             try:
-                # 使用数据源管理器（AkShare → Legacy 降级）
+                # 使用数据源管理器（Legacy 直连）
                 kline = ds.fetch_kline(code, beg_ymd, end_ymd)
                 navs = ds.fetch_nav_history(code, beg_dash, end_dash)
 
@@ -421,7 +421,7 @@ def fetch_kline_historical_data(days_lookback: int = 395) -> int:
 
     for idx, code in enumerate(all_codes):
         try:
-            # 多源K线: EastMoney → Tencent → AkShare
+            # 多源K线: EastMoney → Tencent
             kline = fetch_kline_multisource(session_k, code, beg_ymd, end_ymd)
             if not kline:
                 # 多源都失败，尝试datasource manager作为最后手段

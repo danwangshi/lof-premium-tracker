@@ -17,7 +17,7 @@ COOLDOWN_SECONDS = 300       # 熔断冷却时间（5分钟）
 class DataSourceManager:
     """
     数据源管理器
-    - 日常使用主数据源 (AkShare)
+    - 日常使用主数据源 (Legacy: 东财/腾讯/天天基金直连)
     - 连续失败3次 → 触发熔断，跳过主源直接用后备源
     - 熔断冷却5分钟后自动重试主源
     - 价格数据整体降级 / NAV逐基金降级
@@ -210,13 +210,12 @@ _instance: Optional[DataSourceManager] = None
 
 
 def get_datasource_manager() -> DataSourceManager:
-    """获取全局数据源管理器单例（主=AkShare, 备=Legacy）"""
+    """获取全局数据源管理器单例（主=Legacy: 东财/腾讯/天天基金直连）"""
     global _instance
     if _instance is None:
-        from datasource.ak_share import AkShareSource
         from datasource.legacy import LegacySource
         _instance = DataSourceManager(
-            primary=AkShareSource(),
-            fallback=LegacySource(),
+            primary=LegacySource(),
+            fallback=None,
         )
     return _instance
