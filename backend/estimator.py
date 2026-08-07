@@ -617,7 +617,13 @@ def us_cumulative_change(hist: Optional[Dict[str, float]], nav_date: str,
     base_close = hist[base[-1]]
     if end_close <= 0 or base_close <= 0:
         return single_chg / 100.0
-    return end_close / base_close - 1.0
+    cum = end_close / base_close - 1.0
+    # 防御：主流指数在净值日→最近收盘日之间累计涨跌不可能超过 ±50%。
+    # 超限说明日K数据异常（如腾讯返回未开盘日的占位行 close≈0），
+    # 否则 est = nav×(1+cum×仓位) 会坍缩到 nav×极小值，产生虚假天价溢价。
+    if abs(cum) > 0.5:
+        return single_chg / 100.0
+    return cum
 
 
 # ─────────────────────────────────────────────────────
