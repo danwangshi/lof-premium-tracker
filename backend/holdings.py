@@ -58,7 +58,10 @@ _holdings_lock = threading.Lock()
 _stock_lock = threading.Lock()
 _stock_cache: Dict[str, object] = {}
 
-_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "holdings_cache.json")
+# 持仓缓存持久化到 cache/ 子目录（容器挂载持久卷 /app/backend/cache），
+# 容器重建后不丢失，避免重新批量抓取季报触发限流
+_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
+_CACHE_PATH = os.path.join(_CACHE_DIR, "holdings_cache.json")
 _CACHE_TTL = 90 * 86400  # 季报约 90 天
 
 
@@ -80,6 +83,7 @@ def _load_file_cache() -> dict:
 
 def _save_file_cache(cache: dict) -> None:
     try:
+        os.makedirs(_CACHE_DIR, exist_ok=True)
         with open(_CACHE_PATH, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False)
     except Exception as e:
