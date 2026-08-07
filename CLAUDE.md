@@ -2,4 +2,4 @@
 - after code changes, restart  project and verify locally first
 - only deploy to local docker when asked
 - only deploy to docker of remote NAS when asked
-
+- 尽量使用子agent处理多任务，增加效率而不是等一个任务完成再继续下一个

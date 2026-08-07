@@ -44,3 +44,13 @@ logs/
 # 导出的文档（由 export_docs.py 生成）
 docs/exports/*.docx
 docs/exports/*.pdf
+
+# 运行时持久化缓存（docker 卷挂载到 backend/cache，不入库）
+backend/cache/
+cache/
+
+# 浏览器自动化调试日志（Playwright MCP）
+.playwright-mcp/
+
+# 代理配置说明（含 API key，勿入库）
+_xq_proxy_api.md

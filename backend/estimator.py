@@ -31,6 +31,12 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
+except ImportError:
+    pass
+
 import holdings
 from trading_calendar import is_trading_day, get_last_trading_date
 
@@ -208,6 +214,28 @@ INDEX_KEYWORDS: List[Tuple[str, str]] = [
     ("油气", "0.399439"),
 ]
 
+# 主动型基金黑名单：名称命中行业/主题裸词但实际为主动管理（无跟踪指数），
+# 拒绝 INDEX_KEYWORDS 关键词兜底，改走持仓/滞后净值估算。判定依据：fundmobapi
+# FUNDTYPE 主动型 + 名称无"指数/ETF"特征（含公司名误匹配，如"中银证券"含"证券"）。
+_ACTIVE_FUND_BLACKLIST = {
+    "160127",  # 南方新兴消费增长股票(LOF) —— 主动股票，业绩基准含消费指数但非跟踪
+    "160624",  # 鹏华消费领先 —— 主动混合
+    "160644",  # 港美互联网LOF —— 主动QDII（鹏华港美互联，基准中证海外互联网×95%但非跟踪）
+    "161818",  # 银华消费主题混合 —— 主动混合
+    "162607",  # 景顺长城资源垄断 —— 主动混合
+    "163001",  # 长信医疗保健 —— 主动混合
+    "163208",  # 全球油气能源LOF —— 主动QDII-FOF（诺安油气，基准标普能源）
+    "163302",  # 摩根资源优选 —— 主动混合
+    "163807",  # 中银行业优选 —— 主动混合
+    "164212",  # 全球新能源车LOF —— 主动QDII（天弘，基准中证港美智能汽车+新能源车）
+    "164403",  # 农业精选 —— 主动混合
+    "501095",  # 中银证券科技创新 —— 公司名"证券"误匹配
+    "501209",  # 富久食品饮料 —— 主动混合
+    "501225",  # 全球芯片LOF —— QDII-FOF（景顺长城，费半×70%基准，非单一A股指数）
+    "501226",  # 新能源车全球LOF —— 主动QDII（长城，基准彭博全球新能源车）
+    "501227",  # 泓德红利优选 —— 主动混合
+}
+
 # 港股指数 secid：盘中实时交易，可叠加当日涨跌（港股QDII 与 港股通LOF）
 _HK_INDEX_SECIDS = {"100.HSI", "124.HSTECH", "100.HSCEI"}
 # 海外指数 secid：A股盘中美股/日股等未开盘，当日涨跌反映"净值日之后最近的已收盘交易日"变动
@@ -215,22 +243,22 @@ _OVERSEAS_INDEX_SECIDS = {"100.NDX", "100.SPX", "100.N225", "100.GDAXI"}
 
 # ─────────────────────────────────────────────────────
 # 商品映射配置（商品期货基金估值源）
-# 关键词 → (新浪 hq symbol, 显示名)。统一使用 hf_ 系列（格式：pos0=昨收, pos3=最新）
+# 关键词 → (新浪 hq symbol, 显示名)。统一使用 hf_ 系列（格式：pos3=最新, pos7=昨收）
 #   黄金 → hf_XAU 伦敦金现货（贴近国内 Au99.99，优于 COMEX 期货 hf_GC）
 #   白银 → hf_SI  纽约白银期货
 #   原油 → hf_OIL 布伦特原油（与国内 SC 原油相关性最高；国内期货 nf_SC0 格式复杂弃用）
 # 商品基金（黄金/白银/原油）为商品期货基金，名称不含"QDII"字样但仍按全商品波动估算。
 # ─────────────────────────────────────────────────────
 COMMODITY_KEYWORDS: List[Tuple[str, str, str]] = [
-    # 元组：关键词, 海外现货symbol(新浪hf_), 显示名, 国内期货主力symbol(新浪历史AU0/AG0/SC0)
-    # 国内期货历史用于覆盖"净值日→最近交易日"的海外涨跌（海外历史接口不可用，大行情下二者同步）
-    ("黄金", "hf_XAU", "伦敦金现货", "AU0"),
-    ("白银", "hf_SI", "纽约白银", "AG0"),
-    ("原油", "hf_OIL", "布伦特原油", "SC0"),
+    # 元组：关键词, 海外现货symbol(新浪hf_), 海外日K symbol(新浪GlobalFutures), 显示名
+    # 日K用于覆盖"净值日→最近已收盘交易日"的海外涨跌（与跟踪标的同源，优于国内期货近似）
+    ("黄金", "hf_XAU", "XAU", "伦敦金现货"),
+    ("白银", "hf_SI", "XAG", "纽约白银"),
+    ("原油", "hf_OIL", "OIL", "布伦特原油"),
 ]
 
 # 商品基金商品仓位（期货/ETF 满仓运作，留部分现金）
-COMMODITY_POSITION = 0.9
+COMMODITY_POSITION = 0.95
 
 # 兜底静态映射文件：{code: {"index": 名称, "secid": ..., "position": 股票仓位}}
 _INDEX_MAP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lof_index_map.json")
@@ -258,6 +286,58 @@ def _sess() -> requests.Session:
         _session = requests.Session()
         _session.trust_env = False
     return _session
+
+
+# ─────────────────────────────────────────────────────
+# 反爬代理（按需）：.env 配置 XK_PROXY_API_URL，直连失败时取1个动态代理重试
+# ─────────────────────────────────────────────────────
+_proxy_lock = threading.Lock()
+_proxy_cache: Dict[str, object] = {}
+
+
+def fetch_proxy_ip() -> Optional[str]:
+    """从 .env 的 XK_PROXY_API_URL 取1个动态代理 IP，返回 'ip:port' 或 None。
+    动态代理时效 1-30 分钟；带 60s 缓存避免高频拉取（代理资源有限，省着用）。"""
+    global _proxy_cache
+    api_url = os.environ.get("XK_PROXY_API_URL", "").strip()
+    if not api_url:
+        return None
+    now = datetime.now().timestamp()
+    with _proxy_lock:
+        if _proxy_cache.get("ts", 0) + 60 > now:
+            return _proxy_cache.get("ip")
+    try:
+        resp = requests.get(api_url, timeout=10)
+        data = resp.json()
+        if data.get("status") == 100 and data.get("data"):
+            item = data["data"][0]
+            ip = f"{item['ip']}:{item['port']}"
+            with _proxy_lock:
+                _proxy_cache = {"ts": now, "ip": ip}
+            return ip
+    except Exception as e:
+        logger.debug("Proxy fetch failed: %s", e)
+    return None
+
+
+def _get(url: str, headers: Optional[dict] = None, timeout: int = 8) -> requests.Response:
+    """统一 GET：直连优先；直连失败且 .env 配置了代理时，最多取2个 IP 依次重试。"""
+    try:
+        return _sess().get(url, headers=headers, timeout=timeout)
+    except Exception:
+        pass
+    for _ in range(2):
+        proxy = fetch_proxy_ip()
+        if not proxy:
+            break
+        try:
+            s = requests.Session()
+            s.trust_env = False
+            s.proxies = {"http": proxy, "https": proxy}
+            return s.get(url, headers=headers, timeout=timeout)
+        except Exception:
+            continue  # 该 IP 不可用，取下一个
+    raise
 
 
 def _safe_float(val, default: float = 0.0) -> float:
@@ -329,7 +409,7 @@ def get_fx_change_today(force: bool = False) -> float:
     for symbol in ("fx_susdcny", "USDCNY"):
         try:
             url = f"https://hq.sinajs.cn/list={symbol}"
-            resp = _sess().get(url, headers=_FX_HEADERS, timeout=8)
+            resp = _get(url, headers=_FX_HEADERS, timeout=8)
             resp.encoding = "gbk"
             m = re.search(r'="([^"]+)"', resp.text)
             if not m:
@@ -365,7 +445,7 @@ def fetch_index_change(secid: str) -> Optional[float]:
            "&fields=f43,f58,f60,f170")
     for attempt in range(2):
         try:
-            resp = _sess().get(url, headers=_HEADERS, timeout=8)
+            resp = _get(url, headers=_HEADERS, timeout=8)
             data = resp.json()
             chg = ((data.get("data") or {}).get("f170"))
             if chg == "-" or chg is None:
@@ -417,7 +497,7 @@ def fetch_commodity_change(symbol: str) -> Optional[float]:
     """单只商品（hf_ 系列）当日涨跌幅（%）。新浪 hq 接口，pos0=昨收, pos3=最新。"""
     url = f"https://hq.sinajs.cn/list={symbol}"
     try:
-        resp = _sess().get(url, headers=_FX_HEADERS, timeout=8)
+        resp = _get(url, headers=_FX_HEADERS, timeout=8)
         resp.encoding = "gbk"
         m = re.search(r'="([^"]+)"', resp.text)
         if not m:
@@ -464,44 +544,45 @@ def get_commodity_changes(symbols: List[str], force: bool = False) -> Dict[str, 
 
 
 def match_commodity(name: str) -> Optional[Tuple[str, str, str]]:
-    """匹配商品基金。返回 (海外symbol, 显示名, 国内期货symbol) 或 None。"""
-    for kw, symbol, label, cn_symbol in COMMODITY_KEYWORDS:
+    """匹配商品基金。返回 (海外现货symbol, 海外日K symbol, 显示名) 或 None。"""
+    for kw, symbol, daily_symbol, label in COMMODITY_KEYWORDS:
         if kw in name:
-            return symbol, label, cn_symbol
+            return symbol, daily_symbol, label
     return None
 
 
 # ─────────────────────────────────────────────────────
-# 商品累计涨跌：净值日→最近交易日（国内期货历史近似海外）
-#   × 最近交易日→今日（海外现货当日）
+# 商品累计涨跌：净值日→最近已收盘交易日（海外商品日K，与跟踪标的同源）
+#   × 最近已收盘交易日→今日（海外现货当日）
 # ─────────────────────────────────────────────────────
 _cn_fut_lock = threading.Lock()
 _cn_fut_cache: Dict[str, object] = {}
 
 
-def fetch_cn_fut_hist(symbol: str) -> Optional[Dict[str, float]]:
-    """新浪国内期货日K历史 {date: close}（InnerFuturesNewService，接口返回全量约500KB）。"""
+def fetch_commodity_hist(symbol: str) -> Optional[Dict[str, float]]:
+    """新浪海外商品日K历史 {date: close}（GlobalFuturesService，与跟踪标的同源）。
+    注意字段为 date/open/close（非国内期货的 d/c），且包含今日盘中 bar。"""
     url = (f"https://stock2.finance.sina.com.cn/futures/api/jsonp.php/"
-           f"var%20_=/InnerFuturesNewService.getDailyKLine?symbol={symbol}")
+           f"var%20_=/GlobalFuturesService.getGlobalFuturesDailyKLine?symbol={symbol}")
     try:
-        resp = _sess().get(url, headers=_FX_HEADERS, timeout=12)
+        resp = _get(url, headers=_FX_HEADERS, timeout=12)
         m = re.search(r"\[.*\]", resp.text, re.S)
         if not m:
             return None
         rows = json.loads(m.group(0))
         hist = {}
         for row in rows:
-            d = str(row.get("d") or "")
-            c = _safe_float(row.get("c"))
+            d = str(row.get("date") or "")
+            c = _safe_float(row.get("close"))
             if len(d) == 10 and c > 0:
                 hist[d] = c
         return hist or None
     except Exception as e:
-        logger.debug("CN fut hist fetch failed %s: %s", symbol, e)
+        logger.debug("Commodity hist fetch failed %s: %s", symbol, e)
     return None
 
 
-def get_cn_fut_hist(symbol: str, force: bool = False) -> Optional[Dict[str, float]]:
+def get_commodity_hist(symbol: str, force: bool = False) -> Optional[Dict[str, float]]:
     """带当日缓存：历史日K每天拉一次（全量较大，不重复抓）。"""
     global _cn_fut_cache
     day = datetime.now().strftime("%Y%m%d")
@@ -510,7 +591,7 @@ def get_cn_fut_hist(symbol: str, force: bool = False) -> Optional[Dict[str, floa
             data = _cn_fut_cache.get("data", {})
             if symbol in data:
                 return data[symbol]
-    hist = fetch_cn_fut_hist(symbol)
+    hist = fetch_commodity_hist(symbol)
     if hist:
         with _cn_fut_lock:
             merged = dict(_cn_fut_cache.get("data", {}))
@@ -523,11 +604,11 @@ def commodity_cumulative_change(hist: Optional[Dict[str, float]], nav_date: str,
                                 recent_trade: str, today_chg: float) -> float:
     """
     商品累计涨跌（小数，0.03=3%）。
-    段1（净值日→最近已收盘交易日）：国内期货历史近似海外（大行情下同步，已验证 8/5 沪金+2.70%）
+    段1（净值日→最近已收盘交易日）：海外商品日K（与跟踪标的同源）
     段2（最近已收盘交易日→今日）：海外现货当日涨跌。
     历史/日期缺失时退回当日涨跌。
-    注意：recent_trade 可能是今天盘中（日K未生成），段1终点须取 hist 中
-    ≤ recent_trade 的最后一天，否则会漏掉净值日到昨日的整段涨跌。
+    注意：海外日K包含今日盘中 bar，段1终点须取 hist 中严格 < recent_trade 的最后一天，
+    否则今日盘中价会与段2（当日涨跌）双重计算。
     """
     seg2 = today_chg / 100.0
     if not hist:
@@ -535,7 +616,7 @@ def commodity_cumulative_change(hist: Optional[Dict[str, float]], nav_date: str,
     base = str(nav_date)[:10]
     end = str(recent_trade)[:10]
     d0 = sorted(d for d in hist if d <= base)
-    d1 = sorted(d for d in hist if d <= end)
+    d1 = sorted(d for d in hist if d < end)
     if not d0 or not d1:
         return seg2
     c0 = hist[d0[-1]]
@@ -563,7 +644,7 @@ def fetch_us_hist(tencent_code: str) -> Optional[Dict[str, float]]:
     url = (f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
            f"?param={tencent_code},day,{start},{end},40,qfq")
     try:
-        resp = _sess().get(url, headers=_HEADERS, timeout=10)
+        resp = _get(url, headers=_HEADERS, timeout=10)
         data = (resp.json().get("data") or {})
         rows = (data.get(tencent_code) or {}).get("day") or []
         hist = {}
@@ -661,6 +742,10 @@ def match_index(code: str, name: str) -> Optional[Tuple[str, float]]:
     entry = static.get(code)
     if entry and entry.get("secid"):
         return str(entry["secid"]), _safe_float(entry.get("position"), DEFAULT_POSITION)
+
+    # 主动型基金黑名单：即使名称命中关键词也不按指数估算（避免行业裸词误匹配）
+    if code in _ACTIVE_FUND_BLACKLIST:
+        return None
 
     for kw, secid in INDEX_KEYWORDS:
         if kw in name:
@@ -813,11 +898,11 @@ def estimate_funds(funds: List[Dict]) -> Dict[str, dict]:
         if secid is None:
             comm = match_commodity(name)
             if comm:
-                symbol, _label, cn_symbol = comm
+                symbol, daily_symbol, _label = comm
                 cchg = commodity_changes.get(symbol)
                 if cchg is not None:
-                    # 累计涨跌 = 净值日→最近交易日（国内期货历史近似海外）× 最近交易日→今日（海外现货当日）
-                    hist = get_cn_fut_hist(cn_symbol)
+                    # 累计涨跌 = 净值日→最近已收盘交易日（海外日K，与跟踪标同源）× 最近已收盘交易日→今日（海外现货当日）
+                    hist = get_commodity_hist(daily_symbol)
                     cum = commodity_cumulative_change(hist, nav_date, recent_trade, cchg)
                     est = nav * (1 + fx_change) * (1 + cum * COMMODITY_POSITION)
                     result[code] = {
