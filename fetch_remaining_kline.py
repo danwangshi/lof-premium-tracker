@@ -103,7 +103,7 @@ def load_existing_codes():
             port=5432,
             database='jinkuaicha',
             user='deploy',
-            password='jk_deploy_2026',
+            password='<REDACTED-PASSWORD>',
             connect_timeout=10
         )
         cur = conn.cursor()
