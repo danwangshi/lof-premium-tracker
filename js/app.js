@@ -64,7 +64,11 @@ class LofFundMonitor {
             this.darkMode = 'light';
             this.premiumBase = 'confirmed';
         }
-        this.pageMode = (typeof window.LOF_PAGE_MODE !== 'undefined') ? window.LOF_PAGE_MODE : 'normal';
+        // LOF_PAGE_MODE 由 SPA 路由注入：'lof' | 'etf' | 'favorites'
+        // pageMode 只区分"收藏夹 / 普通列表"两种；板块类别（LOF/ETF）看 initialMode。
+        // 混在一起写会让 `pageMode === 'favorites'` 这类判断在 ETF 下语义含糊。
+        this.initialMode = (typeof window.LOF_PAGE_MODE !== 'undefined') ? window.LOF_PAGE_MODE : 'lof';
+        this.pageMode = (this.initialMode === 'favorites') ? 'favorites' : 'normal';
         if (this.pageMode === 'favorites') {
             this.fundType = 'all';
         }
@@ -151,8 +155,12 @@ class LofFundMonitor {
         this.isLoading = true;
         var self = this;
         // Phase 1: 检查缓存，仅在首次加载时渲染缓存（避免旧缓存覆盖新数据）
-        var cachedFunds = Cache.get('funds');
-        var cachedMeta = Cache.get('fundsMeta');
+        //
+        // 缓存必须按板块分开：首页预热拉的是 LOF，如果 LOF/ETF 共用 'funds'
+        // 这一个键，从首页点进 ETF 时第 1 阶段会先把 LOF 的缓存当作 ETF 列表
+        // 渲染出来（有内容、但内容不对，是最难察觉的一类错）。
+        var cachedFunds = Cache.get(self._fundsCacheKey());
+        var cachedMeta = Cache.get(self._fundsCacheKey('fundsMeta'));
         if (cachedFunds && cachedFunds.length > 0 && self.funds.length === 0) {
             self.funds = cachedFunds;
             self.applyFilters();
@@ -168,7 +176,7 @@ class LofFundMonitor {
         }
         // Phase 2: 后台拉取最新数据
         try {
-            var result = await api.getFunds(1, 600, false, false, { filter_mode: self.filterMode || 'lof' });
+            var result = await api.getFunds(1, self._pageSizeFor(self.filterMode), false, false, { filter_mode: self.filterMode || 'lof' });
             // v2 meta: data_timestamp / data_type / realtime_available
             // v1 meta: last_fetch / refresh_interval_sec (兼容)
             var ts = result.meta ? (result.meta.data_timestamp || result.meta.last_fetch) : null;
@@ -180,8 +188,8 @@ class LofFundMonitor {
             self.funds = result.data.filter(function(f) {
                 return f.premium_rate !== null && f.premium_rate !== undefined;
             });
-            Cache.set('funds', self.funds, 300000);
-            Cache.set('fundsMeta', {
+            Cache.set(self._fundsCacheKey(), self.funds, 300000);
+            Cache.set(self._fundsCacheKey('fundsMeta'), {
                 last_fetch: ts,
                 interval: 5,
                 total: totalFromApi,
@@ -210,6 +218,78 @@ class LofFundMonitor {
     _updateToolbarTimestamp(fetchTime, interval) {
         var ts = document.getElementById('toolbarTimestamp');
         if (ts) ts.textContent = this.formatTime(fetchTime) + ' · ' + interval + '分钟刷新';
+    }
+
+    // 一次拉全量：前端是"全量拉取 + 本地排序/筛选/分页"的架构，
+    // 拉不全不只是少几只基金 —— 溢价率降序、KPI 统计、搜索都只在
+    // 拉回来的那部分里算，榜单会直接失真。
+    //   LOF 全集约 410 只 → 600 足够
+    //   ETF 全集约 1700 只 → 必须放大，否则漏掉约 2/3（后端 size 上限 3000）
+    _pageSizeFor(mode) {
+        var cfg = window.LOF_CONFIG || {};
+        if (mode === 'etf') return cfg.ETF_PAGE_SIZE || 2400;
+        return cfg.DEFAULT_PAGE_SIZE || 600;
+    }
+
+    // 按板块隔离的缓存键。首页预热固定写 LOF 那一套，见 index.html 的 preload。
+    _fundsCacheKey(which) {
+        return (which || 'funds') + ':' + (this.filterMode || 'lof');
+    }
+
+    // ── ETF 子类（由 fund_type 派生，已逐类核对过成员）──────────────────
+    //   指数型-海外股票 / QDII → 跨境
+    //   指数型-固收            → 债券
+    //   指数型-其他            → 商品（成员全是黄金/上海金/有色/能化/豆粕等商品期货）
+    //   指数型-股票            → 股票
+    //
+    // 为什么必须区分：跨境 ETF 的溢价率**天然偏高**（外汇额度受限、申购长期
+    // 暂停、场内外无法自由套利），跟股票 ETF 那种"流动性差导致的异常高溢价"
+    // 完全不是一回事。用户看到 27% 的溢价率时必须一眼看出这是跨境品种，
+    // 否则会把它当成套利机会。
+    _etfClass(fund) {
+        if (this.filterMode !== 'etf') return '';
+        var t = (fund && fund.fund_type) || '';
+        if (t === '指数型-海外股票' || t === 'QDII') return '跨境';
+        if (t === '指数型-固收') return '债券';
+        if (t === '指数型-其他') return '商品';
+        if (t === '指数型-股票') return '股票';
+        return '';
+    }
+
+    _etfClassBadge(fund) {
+        var cls = this._etfClass(fund);
+        // 股票型占 9 成以上，给它打标只会变成噪声
+        if (!cls || cls === '股票') return '';
+        var styles = {
+            '跨境': 'etf-tag--cross',
+            '债券': 'etf-tag--bond',
+            '商品': 'etf-tag--commodity'
+        };
+        var tips = {
+            '跨境': '跨境ETF（含 QDII）：净值披露滞后 1~2 个交易日，且额度受限时'
+                    + '申购长期暂停、场内外无法自由套利 —— 溢价率天然偏高，'
+                    + '不代表存在可执行的套利机会。',
+            '债券': '债券ETF：场内多用于现金管理，做市充分，折溢价通常很小。',
+            '商品': '商品ETF：跟踪黄金/上海金或有色、能化、豆粕等商品期货。'
+        };
+        return '<span class="etf-tag ' + styles[cls] + '" title="' + tips[cls] + '">'
+               + cls + '</span>';
+    }
+
+    // 溢价率到底用的是哪一天的净值？
+    //
+    // 跨境/QDII 的净值披露天然滞后，此时"溢价率 = (T日价格 − T-x净值)/T-x净值"，
+    // 两个交易日的行情被混算，数值会偏高。后端已把 nav_date 如实记录下来，
+    // 前端必须把它摆在溢价率旁边 —— 否则用户会以为这就是当日的真实溢价。
+    // 这里只做展示，不做任何数值修正（修正需要对齐的净值，拿不到就该留空）。
+    _navLagMark(fund) {
+        if (!fund || !fund.nav_date || !fund.trade_date) return '';
+        if (fund.nav_date >= fund.trade_date) return '';
+        var md = String(fund.nav_date).slice(5);   // YYYY-MM-DD → MM-DD
+        var tip = '该溢价率用的是 ' + fund.nav_date + ' 的净值，而行情是 '
+                  + fund.trade_date + ' 的 —— 净值为 T-x，未反映最近交易日的'
+                  + '净值变动，跨境/QDII 基金因披露时点必然如此。';
+        return '<span class="nav-lag" title="' + tip + '">滞后' + md + '</span>';
     }
 
     // ===== 三日平均溢价率（从后端API获取，字段 avg_premium_3d）=====
@@ -339,6 +419,21 @@ class LofFundMonitor {
         lines.push(`<div class="profit-detail-row ${amtClass} total"><span>预计收益额</span><span>${est.amount > 0 ? '+' : ''}${est.amount.toFixed(2)}元</span></div>`);
         lines.push(`</div>`);
 
+        // ETF 的套利路径跟 LOF 完全不是一回事，必须说清楚 ——
+        // 否则上面那个"预计收益率"会被当成零售投资者能落袋的收益。
+        // LOF 是"申购份额 → 场内卖出"，ETF 是"一级市场用一篮子证券申购 → 场内卖出"，
+        // 后者有很高的最小申赎单位，跨境品种还常年暂停申购。
+        if (this.filterMode === 'etf') {
+            const klass = this._etfClass(fund);
+            const note = (klass === '跨境')
+                ? '跨境ETF 的溢价套利必须走<b>一级市场申购</b>（一篮子境外证券或现金替代），'
+                  + '最小申赎单位很高，且额度受限时长期<b>暂停申购</b> —— '
+                  + '上面的收益率在暂停申购期间无法执行，高溢价往往只是供求失衡的体现。'
+                : 'ETF 的折溢价套利必须走<b>一级市场申购/赎回</b>（组合证券 + 现金替代），'
+                  + '通常有 50 万份以上的最小申赎单位，并非零售可执行；'
+                  + '仅在二级市场买卖无法锁定折溢价。';
+            lines.push(`<div class="profit-detail-caveat">⚠️ ${note}</div>`);
+        }
         lines.push(`<div class="profit-detail-footer">所有预估收益为理论计算结果，不产生任何收益保证</div>`);
         lines.push(`</div>`);
 
@@ -470,7 +565,7 @@ class LofFundMonitor {
                 return '<td class="col-code frozen" style="left:36px"><button class="row-star' + starActive + '" data-code="' + fund.code + '">' + (starActive ? '★' : '☆') + '</button><span class="code-text">' + fund.code + '</span></td>';
             case 'name':
                 var displayName = fund.short_name || fund.name;
-                return '<td class="col-name frozen" style="left:135px" title="' + fund.name + '">' + this.truncateName(displayName) + '</td>';
+                return '<td class="col-name frozen" style="left:135px" title="' + fund.name + '">' + this._etfClassBadge(fund) + this.truncateName(displayName) + '</td>';
             case 'price':
                 var p = (fund.realtime_price != null) ? fund.realtime_price.toFixed(3) : (fund.price != null) ? fund.price.toFixed(3) : '--';
                 return '<td class="col-price">' + p + '</td>';
@@ -499,7 +594,7 @@ class LofFundMonitor {
                 var eprTxt = (epr != null) ? eprS + epr.toFixed(2) + '%' : '--';
                 var leftCls = isEst ? 'prem-sub' : 'prem-main';
                 var rightCls = isEst ? 'prem-main' : 'prem-sub';
-                return '<td class="col-premium ' + cls + '"><span class="' + leftCls + '">' + prTxt + '</span><span class="prem-sep">/</span><span class="' + rightCls + '">' + eprTxt + '</span></td>';
+                return '<td class="col-premium ' + cls + '"><span class="' + leftCls + '">' + prTxt + '</span><span class="prem-sep">/</span><span class="' + rightCls + '">' + eprTxt + '</span>' + this._navLagMark(fund) + '</td>';
             case 'avg_premium_3d':
                 var avg = fund.avg_premium_3d;
                 var avgCls = avg > 0 ? 'premium-positive' : avg < 0 ? 'premium-negative' : 'premium-zero';
@@ -1165,17 +1260,45 @@ class LofFundMonitor {
 
     _updateFundTypeCounts(total, cache) {
         const input = document.getElementById('searchInput');
-        const optLabel = document.getElementById('ftOptLofCount');
         const text = '(缓存' + cache + '只 共' + total + '只)';
         if (input) input.placeholder = text + ' 代码/名称';
-        if (optLabel) optLabel.textContent = '缓存' + cache + ' · 共' + total + '只';
+        // 两个下拉项各记各自的数量：切过去时不会显示上一类的数字
+        // （旧实现只写 LOF 那一项，ETF 的计数永远是占位的 "--"）
+        this._typeCounts = this._typeCounts || {};
+        this._typeCounts[this.filterMode || 'lof'] = { total: total, cache: cache };
+        var self = this;
+        ['lof', 'etf'].forEach(function(m) {
+            var el = document.getElementById(m === 'etf' ? 'ftOptEtfCount' : 'ftOptLofCount');
+            if (!el) return;
+            var c = self._typeCounts[m];
+            el.textContent = c ? ('缓存' + c.cache + ' · 共' + c.total + '只') : '--';
+        });
+    }
+
+    // 把下拉按钮上的文字与 .ft-option 的选中态同步到 filterMode
+    _syncFundTypeUI() {
+        var isEtf = this.filterMode === 'etf';
+        var select = document.getElementById('fundTypeSelect');
+        var dropdown = document.getElementById('fundTypeDropdown');
+        if (select) {
+            var label = select.querySelector('.ft-select-label') ||
+                        select.querySelector('.ft-current-label');
+            if (label) label.textContent = isEtf ? 'ETF基金' : 'LOF基金';
+        }
+        if (dropdown) {
+            dropdown.querySelectorAll('.ft-option').forEach(function(o) {
+                o.classList.toggle('active', (o.dataset.type || 'lof') === (isEtf ? 'etf' : 'lof'));
+            });
+        }
     }
 
     _initFundTypeDropdown() {
         const select = document.getElementById('fundTypeSelect');
         const dropdown = document.getElementById('fundTypeDropdown');
         if (!select || !dropdown) { console.warn('[LOF] fund type dropdown elements not found'); return; }
-        this.filterMode = 'lof'; // 默认 LOF
+        // 默认 LOF；从 #/etf 直接进来时用 ETF，保证 URL 与列表内容一致
+        this.filterMode = (this.initialMode === 'etf') ? 'etf' : 'lof';
+        this._syncFundTypeUI();
         var self = this;
         select.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1190,13 +1313,18 @@ class LofFundMonitor {
         dropdown.addEventListener('click', (e) => {
             const opt = e.target.closest('.ft-option');
             if (!opt || opt.classList.contains('disabled')) return;
-            dropdown.querySelectorAll('.ft-option').forEach(o => o.classList.remove('active'));
-            opt.classList.add('active');
-            self.filterMode = opt.dataset.type || 'lof';
             dropdown.style.display = 'none';
-            // 更新按钮文字
-            var label = select.querySelector('.ft-select-label');
-            if (label) label.textContent = self.filterMode === 'etf' ? 'ETF基金' : 'LOF基金';
+            var next = opt.dataset.type || 'lof';
+            if (next === self.filterMode) { self._syncFundTypeUI(); return; }
+            // 只改 URL，真正的类别切换与数据加载交给 SPA._route/_setAppMode ——
+            // 既让地址栏反映当前板块（可分享、可前进后退），也避免两处各拉一次数据。
+            if (typeof SPA !== 'undefined' && SPA.navigate) {
+                SPA.navigate(next);
+                return;
+            }
+            self.filterMode = next;
+            self._syncFundTypeUI();
+            self.currentPage = 1;
             self.loadFunds();
         });
     }
