@@ -39,6 +39,7 @@ from processors.validator import (
     validate_nav,
     validate_realtime,
 )
+from services.universe_service import COLLECT_CATEGORIES
 
 logger = logging.getLogger("consumer")
 
@@ -216,6 +217,18 @@ async def process_nav(data: dict, batch_id: str, session_factory) -> None:
                     updated += 1
             except Exception:
                 pass
+
+        # 净值归位到最新交易日行。本次到货的很可能是滞后净值（跨境/QDII），
+        # 必须把最新交易日行的净值一并修正并按新净值重算溢价率，
+        # 否则页面会继续显示用更旧净值算出来的错位溢价率。
+        # 详见 processors/nav_sync.py 的模块说明。
+        try:
+            from processors.nav_sync import sync_nav_to_latest_row
+            await sync_nav_to_latest_row(
+                session, [i["code"] for i in validated if i.get("code")])
+        except Exception as e:
+            logger.warning("[NAV] 净值归位失败: %s", e)
+
         await session.commit()
 
     # 刷新物化视图
@@ -264,18 +277,17 @@ async def process_info(data: dict, batch_id: str, session_factory) -> None:
     info_records = [_extract_info(r) for r in validated]
     fee_records = [_extract_fee(r) for r in validated]
     holdings_records = [h for h in (_extract_holdings(r) for r in validated) if h is not None]
-    category_records = [
-        {"code": r.get("code"), "category": r.get("fund_type", "OTHER")}
-        for r in info_records if r.get("fund_type")
-    ]
 
     await save_info_batch(session_factory, info_records)
     await save_fee_batch(session_factory, fee_records)
     if holdings_records:
         await save_holdings_batch(session_factory, holdings_records)
-    if category_records:
-        from models import FundCategory
-        await batch_upsert(session_factory, FundCategory, category_records, ["code", "category"])
+    # 注意: 这里不再写 fund_category。
+    # fund_type 是投资类型（如"指数型-股票"），与 fund_category.category 的语义
+    # （LOF/ETF/REITs 这类市场类别）完全不同，混写会污染采集名单。名单维护统一由
+    # services/universe_service + scheduler.job_scan_codes 负责。
+    # （历史实现还因 FundCategory 全部列都是冲突键而每次都报
+    #   "set parameter dictionary must not be empty"，从未真正写成功过。）
 
     for r in validated:
         code = r.get("code")
@@ -324,8 +336,32 @@ async def process_daily_save(data: dict, batch_id: str, session_factory) -> None
     # 2. 从 DB 读取基金列表 + 申购限额 + 最近历史数据（替补用）
     from sqlalchemy import text as sql_text
     async with session_factory() as session:
-        rows = await session.execute(sql_text("SELECT code, name FROM fund_code_list"))
+        # 名单必须与 scheduler._codes() 的采集范围保持一致（fund_category 的 LOF/ETF）。
+        # 历史实现读的是 fund_code_list —— 那张表自 2026-05-30 起再无任何写入路径，
+        # 导致日终入库只覆盖 673 只老基金：新补进采集名单的基金虽然实时行情已进 Redis，
+        # 却永远算不出 close / premium_rate / change_pct。
+        # 类别范围统一取自 services.universe_service.COLLECT_CATEGORIES，避免两处硬编码漂移。
+        rows = await session.execute(sql_text("""
+            SELECT fc.code, COALESCE(fi.name, '') AS name,
+                   COALESCE(fi.fund_type, '') AS fund_type
+            FROM fund_category fc
+            LEFT JOIN fund_info fi ON fi.code = fc.code
+            WHERE fc.category = ANY(:cats)
+            ORDER BY fc.code
+        """), {"cats": list(COLLECT_CATEGORIES)})
         code_list = [dict(r._mapping) for r in rows.fetchall()]
+        # 兜底：场内货币基金不是溢价率标的 —— 其"收盘价"是 100 元面值，而
+        # 数据源 lsjz 给的"净值"其实是每份日收益（0.2 上下），量纲不同，
+        # 套 (close-nav)/nav 会算出几万 % 的溢价率并冲上"溢价率降序"榜首。
+        # 正常路径下它们已在 services/universe_service 被拦在名单外，
+        # 这里再加一道，防止任何分类失误把荒谬数字送到用户面前。
+        from services.universe_service import is_money_market
+        before_mm = len(code_list)
+        code_list = [f for f in code_list
+                     if not is_money_market(f.get("name"))]
+        if before_mm != len(code_list):
+            logger.warning("daily_save 跳过场内货币基金 %d 只（不适用溢价率）",
+                           before_mm - len(code_list))
         # 读取申购限额
         fee_rows = await session.execute(sql_text(
             "SELECT code, purchase_limit FROM fund_fee"
@@ -549,21 +585,13 @@ async def save_info_direct(records: list[dict], session_factory) -> dict:
     info_records = [_extract_info(r) for r in validated]
     fee_records = [_extract_fee(r) for r in validated]
     holdings_records = [h for h in (_extract_holdings(r) for r in validated) if h is not None]
-    category_records = [
-        {"code": r.get("code"), "category": r.get("fund_type", "OTHER")}
-        for r in info_records if r.get("fund_type")
-    ]
 
     result = {}
     result["info"] = await save_info_batch(session_factory, info_records)
     result["fee"] = await save_fee_batch(session_factory, fee_records)
     if holdings_records:
         result["holdings"] = await save_holdings_batch(session_factory, holdings_records)
-    if category_records:
-        from models import FundCategory
-        result["category"] = await batch_upsert(
-            session_factory, FundCategory, category_records, ["code", "category"]
-        )
+    # 同 process_info: 不再把 fund_type 当作 fund_category.category 写入（语义不同）。
 
     await save_job_log(session_factory, "info_direct", result.get("info", {}), batch_id)
     logger.info("直接入库完成: info=%s fee=%s",
