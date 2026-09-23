@@ -24,13 +24,14 @@ function formatAmount(val) {
 }
 
 /**
- * 估算净值时间标签（本地时间 HH:MM）
+ * 估算净值时间标签 —— 必须是后端给出的**真实生成时刻**。
+ *
+ * 这里原来返回 `new Date()`（浏览器当前时间），等于给一份几小时前算出来的
+ * 估算值盖上"刚刚"的戳：实测页面显示 22:37，而那份估算在 19:57 就算完了，
+ * 之后没有再刷新（est_nav 只在 9:25–20:00 运行）。用户看到的"时间"是假的。
  */
-function _estNavTimeLabel() {
-    var now = new Date();
-    var hh = now.getHours().toString().padStart(2, '0');
-    var mm = now.getMinutes().toString().padStart(2, '0');
-    return hh + ':' + mm;
+function _estNavTimeLabel(fund) {
+    return (fund && fund.est_nav_time) ? fund.est_nav_time : '';
 }
 
 class LofFundMonitor {
@@ -45,6 +46,15 @@ class LofFundMonitor {
         this.refreshTimer = null;
         this.searchTimeout = null;
         this.isLoading = false;
+        // `_loadSeq`：每次 loadFunds 自增的请求代号。响应回来时代号对不上就丢弃，
+        // 避免"晚到的旧响应覆盖新板块数据"（切到 ETF 又被 LOF 的数据盖回去）。
+        this._loadSeq = 0;
+        // `_fundsMode`：当前 funds 数组属于哪个板块（'lof'/'etf'）。
+        // 用它判断"是否发生了板块切换"，而不是看 funds 是否为空 ——
+        // 切换时 funds 里装的是上一个板块的数据，非空，据此判断会漏掉清场。
+        this._fundsMode = null;
+        // 上一次成功加载的板块：用于区分"刷新完成"和"切换后首次加载"
+        this.lastLoadedMode = null;
         // 筛选参数（从 localStorage 恢复或用默认值）
         try {
             this.threshold = parseFloat(localStorage.getItem('lof_threshold')) || 0;
@@ -148,19 +158,53 @@ class LofFundMonitor {
 
     loadRankings() {}
 
-    async loadFunds() {
-        // 防止并发加载（自动刷新可能在加载中再次触发）
-        if (this._loadingFunds) return;
+    /**
+     * 拉取并展示"当前板块"的基金列表。
+     *
+     * 职责界限（2026-09-23 重写，用户报告"点 ETF 要等刷新才变"）：
+     *   * **板块归属由 `filterMode` 单向决定**。请求只负责取数据，
+     *     不允许"谁先回来谁说话"——每次请求带一个自增代号 `_loadSeq`，
+     *     响应回来时代号对不上就整个丢弃。
+     *   * **用户主动切换优先于自动刷新**。点击时带 `force`，即便有请求在途
+     *     也照常发起；旧请求靠代号作废，而不是把新请求挡在门外。
+     *
+     * 旧实现的两个毛病：
+     *   1. `if (this._loadingFunds) return;` —— 自动刷新每 90 秒跑一次，
+     *      LOF 约 0.9 秒 / ETF 约 2~3.5 秒。用户在这几秒内点切换会被
+     *      **静默丢弃**，界面停在旧板块直到下一次自动刷新（最多 90 秒）。
+     *   2. 没有代号保护，晚到的旧响应会覆盖新数据，界面"闪回"旧板块。
+     *
+     * @param {{force?: boolean}} [opts] force=true 表示用户主动切换/手动刷新
+     */
+    async loadFunds(opts) {
+        opts = opts || {};
+        var mode = this.filterMode || 'lof';
+        var self = this;
+
+        if (this._loadingFunds && !opts.force) return;
+
+        var seq = ++this._loadSeq;
         this._loadingFunds = true;
         this.isLoading = true;
-        var self = this;
-        // Phase 1: 检查缓存，仅在首次加载时渲染缓存（避免旧缓存覆盖新数据）
-        //
-        // 缓存必须按板块分开：首页预热拉的是 LOF，如果 LOF/ETF 共用 'funds'
-        // 这一个键，从首页点进 ETF 时第 1 阶段会先把 LOF 的缓存当作 ETF 列表
-        // 渲染出来（有内容、但内容不对，是最难察觉的一类错）。
-        var cachedFunds = Cache.get(self._fundsCacheKey());
-        var cachedMeta = Cache.get(self._fundsCacheKey('fundsMeta'));
+
+        // ── Phase 0：板块切换先清场 ──
+        // 不清掉的话，切换瞬间屏幕上是**上一个板块的行**，用户会以为按钮没生效。
+        // 这是"看起来没反应"的第二个来源。
+        if (this._fundsMode !== mode) {
+            this._fundsMode = mode;
+            this.funds = [];
+            this.currentPage = 1;
+            this.applyFilters();
+            this.renderTable();
+            this.updatePaginationInfo();
+            this.updateStatus('正在加载 ' + this._fundTypeLabel(mode) + ' 数据...');
+        }
+
+        // ── Phase 1：先渲染本板块的缓存（缓存键按板块隔离，见 _fundsCacheKey）──
+        // 上一轮把缓存按板块分开了，但这里原先只在 `funds.length === 0` 时才渲染，
+        // 切换时 funds 非空 → 永远读不到缓存，按板块隔离等于白做。
+        var cachedFunds = Cache.get(self._fundsCacheKey('funds', mode));
+        var cachedMeta = Cache.get(self._fundsCacheKey('fundsMeta', mode));
         if (cachedFunds && cachedFunds.length > 0 && self.funds.length === 0) {
             self.funds = cachedFunds;
             self.applyFilters();
@@ -168,17 +212,21 @@ class LofFundMonitor {
             self.updatePaginationInfo();
             if (cachedMeta) {
                 self._updateToolbarTimestamp(cachedMeta.last_fetch, cachedMeta.interval);
-                self._updateFundTypeCounts(cachedMeta.total, cachedFunds.length);
+                self._updateFundTypeCounts(cachedMeta.total, cachedFunds.length, mode);
             }
-            self._softToast('数据来自缓存');
+            // 切换板块时不提示"来自缓存"：缓存是立刻铺上去的，新数据几秒就到，
+            // 状态栏已经写着"正在加载 X 数据…"，再弹一个 toast 只是噪声。
+            // 真正的刷新路径（切回同一板块）才提示数据来源。
+            if (!switched) self._softToast('数据来自缓存');
             self.updateStatus('');
-            self.isLoading = false;
         }
-        // Phase 2: 后台拉取最新数据
+
+        // ── Phase 2：取最新数据 ──
         try {
-            var result = await api.getFunds(1, self._pageSizeFor(self.filterMode), false, false, { filter_mode: self.filterMode || 'lof' });
-            // v2 meta: data_timestamp / data_type / realtime_available
-            // v1 meta: last_fetch / refresh_interval_sec (兼容)
+            var result = await api.getFunds(1, self._pageSizeFor(mode), false, false,
+                                            { filter_mode: mode });
+            if (seq !== self._loadSeq) return;   // 已被更新的请求取代，丢弃本次结果
+
             var ts = result.meta ? (result.meta.data_timestamp || result.meta.last_fetch) : null;
             if (ts) {
                 self._lastServerFetch = ts;
@@ -188,8 +236,9 @@ class LofFundMonitor {
             self.funds = result.data.filter(function(f) {
                 return f.premium_rate !== null && f.premium_rate !== undefined;
             });
-            Cache.set(self._fundsCacheKey(), self.funds, 300000);
-            Cache.set(self._fundsCacheKey('fundsMeta'), {
+            self._fundsMode = mode;
+            Cache.set(self._fundsCacheKey('funds', mode), self.funds, 300000);
+            Cache.set(self._fundsCacheKey('fundsMeta', mode), {
                 last_fetch: ts,
                 interval: 5,
                 total: totalFromApi,
@@ -199,10 +248,15 @@ class LofFundMonitor {
             self.applyFilters();
             self.renderTable();
             self.updatePaginationInfo();
-            self._updateFundTypeCounts(totalFromApi, self.funds.length);
-            self._softToast('数据已更新');
-            if (self.funds.length > 0) self.updateStatus('');
+            self._updateFundTypeCounts(totalFromApi, self.funds.length, mode);
+            self._softToast(mode === self.lastLoadedMode ? '数据已更新'
+                           : self._fundTypeLabel(mode) + ' 数据已加载');
+            self.lastLoadedMode = mode;
+            // 无条件清掉"正在加载…"：边界情况下（例如搜索词把整表筛空）
+            // 它可能一直挂在状态栏上，看起来像卡住了。
+            self.updateStatus('');
         } catch (error) {
+            if (seq !== self._loadSeq) return;
             if (!cachedFunds || cachedFunds.length === 0) {
                 var e = new Error('基金列表加载失败: ' + error.message);
                 e.errorType = error.errorType || 'unknown';
@@ -210,9 +264,17 @@ class LofFundMonitor {
             }
             self._softToast('刷新失败，显示缓存数据');
         } finally {
-            self.isLoading = false;
-            self._loadingFunds = false;
+            // 只有"最新那一次"请求才有权清除 loading，否则会把接替它的
+            // 那次请求的状态误清掉。
+            if (seq === self._loadSeq) {
+                self.isLoading = false;
+                self._loadingFunds = false;
+            }
         }
+    }
+
+    _fundTypeLabel(mode) {
+        return (mode === 'etf') ? 'ETF' : 'LOF';
     }
 
     _updateToolbarTimestamp(fetchTime, interval) {
@@ -232,8 +294,10 @@ class LofFundMonitor {
     }
 
     // 按板块隔离的缓存键。首页预热固定写 LOF 那一套，见 index.html 的 preload。
-    _fundsCacheKey(which) {
-        return (which || 'funds') + ':' + (this.filterMode || 'lof');
+    // `mode` 显式传入而不是读 `this.filterMode`：请求在途时用户可能已经切走，
+    // 用当前值会把结果写进错误板块的缓存。
+    _fundsCacheKey(which, mode) {
+        return (which || 'funds') + ':' + (mode || this.filterMode || 'lof');
     }
 
     // ── ETF 子类（由 fund_type 派生，已逐类核对过成员）──────────────────
@@ -281,15 +345,20 @@ class LofFundMonitor {
     // 跨境/QDII 的净值披露天然滞后，此时"溢价率 = (T日价格 − T-x净值)/T-x净值"，
     // 两个交易日的行情被混算，数值会偏高。后端已把 nav_date 如实记录下来，
     // 前端必须把它摆在溢价率旁边 —— 否则用户会以为这就是当日的真实溢价。
+    //
+    // 措辞注意：早期版本写的是"滞后MM-DD"，会被读成"数据没更新/出错了"。
+    // 其实这正是"目前能拿到的最新净值"，只是日期比行情早，所以改成中性的
+    // "按MM-DD净值"，把"为什么"放进 title。
     // 这里只做展示，不做任何数值修正（修正需要对齐的净值，拿不到就该留空）。
     _navLagMark(fund) {
         if (!fund || !fund.nav_date || !fund.trade_date) return '';
         if (fund.nav_date >= fund.trade_date) return '';
         var md = String(fund.nav_date).slice(5);   // YYYY-MM-DD → MM-DD
-        var tip = '该溢价率用的是 ' + fund.nav_date + ' 的净值，而行情是 '
-                  + fund.trade_date + ' 的 —— 净值为 T-x，未反映最近交易日的'
-                  + '净值变动，跨境/QDII 基金因披露时点必然如此。';
-        return '<span class="nav-lag" title="' + tip + '">滞后' + md + '</span>';
+        var tip = '该溢价率 = (' + fund.trade_date + ' 行情 − ' + fund.nav_date
+                  + ' 净值) ÷ 该净值。跨境/QDII 基金的净值要等海外市场收盘后由'
+                  + '基金公司估值披露，天然比行情晚 1~2 个交易日；此处用的已经是'
+                  + '目前可获得的最新净值（净值日期见「净值」列下方）。';
+        return '<span class="nav-lag" title="' + tip + '">按' + md + '净值</span>';
     }
 
     // ===== 三日平均溢价率（从后端API获取，字段 avg_premium_3d）=====
@@ -528,8 +597,29 @@ class LofFundMonitor {
         var pageCols = pages[this._columnPage || 0] || [];
         var colCount = frozen.length + pageCols.length + 2; // +2 for arrow columns
         if (this.filteredFunds.length === 0) {
-            if (tbody) tbody.innerHTML = '<tr><td colspan="' + colCount + '" class="empty-state"><i class="icon">📭</i><p>暂无数据</p><p class="loading-hint">尝试调整筛选条件</p></td></tr>';
-            if (cardList) cardList.innerHTML = '<div class="mobile-empty"><i class="icon">📭</i><p>暂无数据</p></div>';
+            // 空表要分清是哪一种空 —— 一律写"暂无数据/调整筛选条件"的话，
+            // 切换板块时看到空表会以为"这个板块坏了"，其实多半是搜索词或
+            // 阈值筛选从上一个板块带过来了。
+            var label = this._fundTypeLabel(this.filterMode);
+            var em, hint;
+            if (this.isLoading) {
+                em = '正在加载 ' + label + ' 数据…';
+                hint = label + ' 数量较多，通常 1~3 秒';
+            } else if (this.searchKeyword) {
+                em = '当前板块没有匹配「' + this.searchKeyword + '」的基金';
+                hint = '搜索词在板块之间是共用的，清空搜索或换回原板块看看';
+            } else if (this.threshold > 0 || this.minAmount > 0 || this.avgThreshold > 0) {
+                em = label + ' 板块在当前筛选阈值下没有基金';
+                hint = '阈值筛选同样跨板块保留，可在「设置」里放宽';
+            } else {
+                em = '暂无数据';
+                hint = '尝试调整筛选条件';
+            }
+            if (tbody) tbody.innerHTML = '<tr><td colspan="' + colCount
+                + '" class="empty-state"><i class="icon">📭</i><p>' + em
+                + '</p><p class="loading-hint">' + hint + '</p></td></tr>';
+            if (cardList) cardList.innerHTML = '<div class="mobile-empty"><i class="icon">📭</i><p>'
+                + em + '</p><p class="loading-hint">' + hint + '</p></div>';
             return;
         }
         var start = (this.currentPage - 1) * this.pageSize;
@@ -575,7 +665,7 @@ class LofFundMonitor {
                 return '<td class="col-nav">' + n + (nd ? '<div class="cell-sub">' + nd + '</div>' : '') + '</td>';
             case 'est_nav':
                 var en = (fund.est_nav != null) ? fund.est_nav.toFixed(4) : '--';
-                var et = fund.est_nav != null ? _estNavTimeLabel() : '';
+                var et = fund.est_nav != null ? _estNavTimeLabel(fund) : '';
                 return '<td class="col-est-nav">' + en + (et ? '<div class="cell-sub">' + et + '</div>' : '') + '</td>';
             case 'change_pct':
                 var cp = fund.change_pct;
@@ -1258,14 +1348,15 @@ class LofFundMonitor {
         el.className = 'market-status ms-' + status;
     }
 
-    _updateFundTypeCounts(total, cache) {
+    _updateFundTypeCounts(total, cache, mode) {
+        var m0 = mode || this.filterMode || 'lof';
         const input = document.getElementById('searchInput');
         const text = '(缓存' + cache + '只 共' + total + '只)';
         if (input) input.placeholder = text + ' 代码/名称';
         // 两个下拉项各记各自的数量：切过去时不会显示上一类的数字
         // （旧实现只写 LOF 那一项，ETF 的计数永远是占位的 "--"）
         this._typeCounts = this._typeCounts || {};
-        this._typeCounts[this.filterMode || 'lof'] = { total: total, cache: cache };
+        this._typeCounts[m0] = { total: total, cache: cache };
         var self = this;
         ['lof', 'etf'].forEach(function(m) {
             var el = document.getElementById(m === 'etf' ? 'ftOptEtfCount' : 'ftOptLofCount');
@@ -1325,7 +1416,10 @@ class LofFundMonitor {
             self.filterMode = next;
             self._syncFundTypeUI();
             self.currentPage = 1;
-            self.loadFunds();
+            // 用户主动切换：force 绕过并发保护，并由 _loadSeq 作废在途的旧请求
+            self.loadFunds({ force: true }).catch(function(e) {
+                self.showError(true, self._errorHelpText(e));
+            });
         });
     }
 
@@ -1922,7 +2016,8 @@ class LofFundMonitor {
             }
             this._lastServerFetch = serverLastFetch;
             await this.loadRankings();
-            await this.loadFunds();
+            // 手动刷新是用户主动行为：不受"自动刷新在途"限制
+            await this.loadFunds({ force: true });
             this._softToast('刷新完成');
         } catch (error) {
             this.showToast('刷新失败: ' + error.message);
@@ -2288,7 +2383,7 @@ class LofFundMonitor {
         if (navDateEl) navDateEl.textContent = fund.nav_date || '';
         setVal('fdEstNav', fund.est_nav != null ? fund.est_nav.toFixed(4) : null);
         var estTimeEl = document.getElementById('fdEstNavTime');
-        if (estTimeEl) estTimeEl.textContent = fund.est_nav != null ? _estNavTimeLabel() : '';
+        if (estTimeEl) estTimeEl.textContent = fund.est_nav != null ? _estNavTimeLabel(fund) : '';
         setVal('fdChangePct', cp != null ? cpSign + cp.toFixed(2) + '%' : null, cpCls);
         var prSign = _pr > 0 ? '+' : '', eprSign = (_epr != null && _epr > 0) ? '+' : '';
         var prText = _pr != null ? prSign + _pr.toFixed(2) + '%' : '--';
