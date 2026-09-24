@@ -842,7 +842,6 @@ class LofFundMonitor {
         const eprText = epr !== null && epr !== undefined ? eprSign + epr.toFixed(2) + '%' : '--';
         const leftCls = isEst ? 'prem-sub' : 'prem-main';
         const rightCls = isEst ? 'prem-main' : 'prem-sub';
-        const statusText = fund.premium_status || '未知';
         // 千元可赚
         const est = this.calcEstimatedProfit(fund);
         let profitText = '--', profitClass = '';
@@ -853,10 +852,15 @@ class LofFundMonitor {
             profitClass = profit1000 > 0 ? 'mc-pos' : profit1000 < 0 ? 'mc-neg' : '';
         }
         var isFav = this._isFavorite(fund.code);
+        // 名称不再按字数硬截断：新布局给名称一整段可伸缩的空间，
+        // 交给 CSS 的 text-overflow: ellipsis 按真实渲染宽度省略。
+        // 原来固定截 8 字，在 390px 上白白浪费一大截宽度，还让星标
+        // 随名称长短左右浮动。
+        var fullName = fund.short_name || fund.name || '';
         return `<div class="mobile-card" data-code="${fund.code}">
             <div class="mc-top-row">
                 <span class="mc-code">${fund.code}</span>
-                <span class="mc-name">${this.truncateName(fund.short_name || fund.name, 8)}</span>
+                <span class="mc-name" title="${fullName}">${fullName}</span>
                 <button class="mc-fav-btn${isFav ? ' mc-fav--active' : ''}" data-code="${fund.code}">${isFav ? '★' : '☆'}</button>
             </div>
             <div class="mc-right">
@@ -955,9 +959,15 @@ class LofFundMonitor {
         const fsBtn = document.getElementById('fdFullscreenBtn');
         if (fsBtn) fsBtn.addEventListener('click', () => this._toggleChartFullscreen());
 
-        // 深色模式按钮
-        const darkModeBtn = document.getElementById('darkModeBtn');
-        if (darkModeBtn) darkModeBtn.addEventListener('click', () => this.toggleDarkMode());
+        // 深色模式：切换由 index.html 的内联处理器统一负责（它在 document 上做
+        // 委托，同时覆盖数据页与首页两个按钮，且不依赖 app.js 是否加载）。
+        // 这里**不再**绑 click —— 曾经两边都绑，点一次各切一次互相抵消，
+        // 数据页的按钮点了没反应、点两次才生效、刷新后还丢失。
+        // 只监听切换结果，同步实例状态并把偏好推到云端设置。
+        document.addEventListener('jkc:darkmode', (e) => {
+            this.darkMode = e.detail && e.detail.mode === 'dark' ? 'dark' : 'light';
+            if (typeof SettingsSync !== 'undefined') SettingsSync.pushToCloud();
+        });
         // 十大持仓按钮
         document.querySelector('.fund-table')?.addEventListener('click', (e) => {
             const btn = e.target.closest('.btn-holdings');
@@ -1071,30 +1081,20 @@ class LofFundMonitor {
     }
 
     // ===== 深色模式 =====
-    toggleDarkMode() {
-        if (this.darkMode === 'light') {
-            this.darkMode = 'dark';
-        } else {
-            this.darkMode = 'light';
-        }
-        localStorage.setItem('lof_darkMode', this.darkMode);
-        this.applyDarkMode(true);
-        if (typeof SettingsSync !== 'undefined') SettingsSync.pushToCloud();
-    }
-
-    applyDarkMode(save) {
+    // 只负责"把当前 this.darkMode 应用到 DOM"。切换动作由 index.html 的
+    // 内联处理器完成（它对两个按钮都生效），这里仅在 init 时做一次对齐。
+    applyDarkMode() {
         const btn = document.getElementById('darkModeBtn');
+        const btnLanding = document.getElementById('darkModeBtnLanding');
         const root = document.documentElement;
 
         root.classList.remove('dark-mode', 'light-mode');
 
-        if (this.darkMode === 'dark') {
-            root.classList.add('dark-mode');
-            if (btn) { btn.textContent = '☀️'; btn.title = '当前：深色模式（点击切换浅色）'; }
-        } else {
-            root.classList.add('light-mode');
-            if (btn) { btn.textContent = '🌙'; btn.title = '当前：浅色模式（点击切换深色）'; }
-        }
+        const isDark = this.darkMode === 'dark';
+        root.classList.add(isDark ? 'dark-mode' : 'light-mode');
+        if (btn) { btn.textContent = isDark ? '☀️' : '🌙'; btn.title = isDark ? '当前：深色模式（点击切换浅色）' : '当前：浅色模式（点击切换深色）'; }
+        // 首页那个按钮此前不在这里更新，图标会和实际主题不一致
+        if (btnLanding) { btnLanding.textContent = isDark ? '☀️' : '🌙'; btnLanding.title = isDark ? '当前：深色模式（点击切换浅色）' : '当前：浅色模式（点击切换深色）'; }
     }
 
     openSettingsModal() {
@@ -1352,7 +1352,14 @@ class LofFundMonitor {
         var m0 = mode || this.filterMode || 'lof';
         const input = document.getElementById('searchInput');
         const text = '(缓存' + cache + '只 共' + total + '只)';
-        if (input) input.placeholder = text + ' 代码/名称';
+        // 窄屏放不下整串：320px 上输入框只有约 165px，(缓存405只 共411只) 代码/名称
+        // 会被截成"代码/名"。窄屏只留最要紧的操作提示，数量在工具栏
+        // "显示 N 条，共 M 条" 和基金类型下拉里都能看到。
+        const narrow = (window.innerWidth || 9999) <= 480;
+        if (input) {
+            input.placeholder = narrow ? '代码/名称' : text + ' 代码/名称';
+            input.title = text;   // 数量仍可悬停查看，不丢信息
+        }
         // 两个下拉项各记各自的数量：切过去时不会显示上一类的数字
         // （旧实现只写 LOF 那一项，ETF 的计数永远是占位的 "--"）
         this._typeCounts = this._typeCounts || {};
