@@ -11,9 +11,22 @@ import psycopg2, psycopg2.extras, requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:ewcdQQeMIKyQhPSdVZkXViTczRDBNNjz@yamabiko.proxy.rlwy.net:53799/railway")
+DB_URL = os.getenv("DATABASE_URL")
 BATCH = 500
 WORKERS = 3
+
+def _require_db_url():
+    """DATABASE_URL 必须由环境显式提供。
+
+    本脚本不再内置任何默认连接串：历史版本曾把生产库口令写成默认值，
+    在公开仓库里暴露了数月（见 SECURITY_INCIDENT.md）。
+    缺失时显式报错并非零退出，绝不静默回退到硬编码值，也不用空值继续。
+    """
+    if not DB_URL:
+        print("ERROR: 环境变量 DATABASE_URL 未设置 —— 本脚本没有内置默认连接串。", file=sys.stderr)
+        print("       用法: DATABASE_URL='postgresql://<user>:<password>@<host>:<port>/<db>' python seed_kline_v2.py", file=sys.stderr)
+        sys.exit(2)
+    return DB_URL
 
 def _make_session():
     s = requests.Session()
@@ -172,10 +185,11 @@ def fetch_one(code, s_k, s_n, beg_ymd, end_ymd, beg_dash, end_dash):
     return (code, rows)
 
 def main():
+    db_url = _require_db_url()
     print("="*60)
     print("  K-line backfill v2 - 9 sources, local→Railway")
     print("="*60)
-    u = urlparse(DB_URL)
+    u = urlparse(db_url)
     conn = psycopg2.connect(host=u.hostname, port=u.port, dbname=u.path[1:], user=u.username, password=u.password, connect_timeout=15)
     conn.autocommit = False
     with conn.cursor() as cur:

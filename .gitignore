@@ -24,10 +24,12 @@ build/
 venv/
 .venv/
 
-# 环境变量（所有 .env 开头的文件，但保留 .env.example 和 .env.dev）
-.env
-.env.local
-.env.production
+# 环境变量：忽略所有 .env*，只保留显式模板
+.env*
+!.env.example
+!*.env.example
+# 上面的 *.env.example 匹配不到 .env.dev.example（必须以 .env.example 结尾），单独放行
+!*.env.dev.example
 
 # v1 遗留
 backend/fee_cache.json
@@ -42,6 +44,7 @@ backend-v2/snapshots/
 # 密钥文件
 credentials.md
 secrets.md
+SECURITY_INCIDENT.md
 
 # 推送/部署辅助脚本（内含密钥，禁止提交）
 push_github.sh
@@ -61,6 +64,12 @@ venv_err.txt
 # 开发工具产物
 .codegraph/
 .workbuddy/
+
+# agent 临时工作目录（本机脚本产物，含中间态，禁止入库）
+.tmp-ops/
+
+# supabase CLI 临时产物（本项目 Supabase 已休眠：后端零引用）
+supabase/.temp/
 
 # Node
 node_modules/
