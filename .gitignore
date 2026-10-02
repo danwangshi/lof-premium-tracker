@@ -65,6 +65,12 @@ venv_err.txt
 .codegraph/
 .workbuddy/
 
+# agent 临时工作目录（本机脚本产物，含中间态，禁止入库）
+.tmp-ops/
+
+# supabase CLI 临时产物（本项目 Supabase 已休眠：后端零引用）
+supabase/.temp/
+
 # Node
 node_modules/
 
