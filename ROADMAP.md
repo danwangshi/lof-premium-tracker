@@ -1,5 +1,15 @@
 # 金快查 开发路线图 (ROADMAP)
 
+> ⚠️ **本文档已过时，不要以此为准。**
+> 内容停留在 2026-05-26，且架构描述仍是旧的（Railway + Flask + `backend/`），
+> 而现网实际是「阿里云 ECS + FastAPI + `backend-v2/` + Redis + APScheduler + 物化视图」。
+>
+> **当前有效的排期与任务拆分见 → [`docs/plan/重构排期.md`](docs/plan/重构排期.md)**
+> （含基线实测数据、48 个任务 ID、4 个决策门、风险登记册）
+>
+> 本文档保留作历史设计参考（M1–M5 的原始设计思路仍然可读），重写计划见
+> `docs/plan/重构排期.md` 的 **D1**。
+
 > 最后更新：2026-05-26 — M1/M2完成，M3a用户中心WIP |
 > 维护者：[@MistyBridge](https://github.com/MistyBridge)
 
