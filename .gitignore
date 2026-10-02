@@ -42,6 +42,7 @@ backend-v2/snapshots/
 # 密钥文件
 credentials.md
 secrets.md
+SECURITY_INCIDENT.md
 
 # 推送/部署辅助脚本（内含密钥，禁止提交）
 push_github.sh
