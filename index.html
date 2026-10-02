@@ -25,7 +25,7 @@
     <meta name="twitter:title" content="金快查 - LOF/ETF基金实时折溢价监控">
     <meta name="twitter:description" content="全市场LOF、ETF基金实时溢价率、折价率、套利收益计算。">
 
-    <link rel="stylesheet" href="css/style.css?v=28">
+    <link rel="stylesheet" href="css/style.css?v=29">
     <link rel="stylesheet" href="css/landing.css?v=7">
     <link rel="stylesheet" href="css/account.css?v=1">
     <link rel="stylesheet" href="css/admin.css?v=1">
@@ -545,6 +545,7 @@
                         <option value="7">七日</option><option value="30">一月</option><option value="90">三月</option><option value="180">六月</option><option value="365">一年</option>
                     </select>
                 </div>
+                <div class="fd-est-accuracy" id="fdEstAccuracy" style="display:none"></div>
                 <div class="fd-chart-container"><canvas id="fdChart"></canvas><button class="fd-fullscreen-btn" id="fdFullscreenBtn" title="全屏横屏查看">⛶</button></div>
             </div>
         </div>
@@ -775,7 +776,7 @@
                 return self._loadScript('js/api.js?v=26');
             }).then(function() {
                 // Phase 3: app.js 依赖以上所有
-                return self._loadScript('js/app.js?v=40');
+                return self._loadScript('js/app.js?v=42');
             }).then(function() {
                 self._scriptsReady = true;
             });

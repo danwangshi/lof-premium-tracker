@@ -217,6 +217,17 @@ INDEXES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_alerts_active ON user_alert (user_id) WHERE is_active = TRUE",
     "CREATE INDEX IF NOT EXISTS idx_job_name ON job_log (job_name, started_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_est_nav_date ON fund_est_nav (trade_date DESC)",
+    # 详情页日线图按 (code, 日期区间) 取每日收盘估算净值。
+    # 只有 idx_est_nav_date 时，30 天区间≈整表（实测 8.9M 行/1.5GB）→ 顺序扫描，
+    # 线上实测直接撞 statement_timeout。这个索引把访问路径收窄到单只基金的几十天。
+    #
+    # 注意：在**已有大量数据**的库上，本语句会在启动时阻塞数十秒（普通 CREATE INDEX
+    # 会挡住该表的写入）。生产环境请先手工执行
+    #   CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_est_nav_code_date
+    #       ON fund_est_nav (code, trade_date DESC, snapshot_time DESC);
+    # 之后这里的 IF NOT EXISTS 即为空操作。
+    "CREATE INDEX IF NOT EXISTS idx_est_nav_code_date "
+    "ON fund_est_nav (code, trade_date DESC, snapshot_time DESC)",
 ]
 
 # 列迁移（ALTER TABLE ADD COLUMN IF NOT EXISTS，兼容已有表）

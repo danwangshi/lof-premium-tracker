@@ -1017,6 +1017,20 @@ body::-webkit-scrollbar-thumb:hover { background: #909399; }
 .fd-ind-select:focus, .fd-range-select:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(24,144,255,0.15); }
 .dark-mode .fd-ind-select, .dark-mode .fd-range-select { background: #1a2a4a; border-color: #334466; color: #c8d6e5; }
 
+/* 估算净值准确度摘要：只在「估算净值 + 场外净值」模式下显示 */
+.fd-est-accuracy {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+    margin-bottom: 8px; padding: 7px 10px; border-radius: 8px;
+    background: rgba(250,173,20,0.08); border: 1px solid rgba(250,173,20,0.28);
+    font-size: 0.76rem; color: var(--text2); line-height: 1.5;
+}
+.fd-est-accuracy b { color: var(--text); font-weight: 600; }
+.fd-est-accuracy .fd-est-acc-hint { opacity: 0.75; }
+.dark-mode .fd-est-accuracy { background: rgba(250,173,20,0.1); border-color: rgba(250,173,20,0.3); }
+@media (max-width: 600px) {
+    .fd-est-accuracy { font-size: 0.7rem; padding: 6px 8px; gap: 4px 10px; }
+}
+
 /* Full-width chart */
 .fd-phase { width: 100%; position: relative; }
 

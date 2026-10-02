@@ -52,7 +52,7 @@ async function loadAndObserve(label, { pokeAutoRefresh } = {}) {
 
   await page.goto(TARGET, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.querySelectorAll('#fundTableBody tr.fund-row').length > 0,
-    { timeout: 90000 }).catch(() => {});
+    null, { timeout: 120000 }).catch(() => {});
   await page.waitForTimeout(4000);
 
   const state1 = await page.evaluate(() => {

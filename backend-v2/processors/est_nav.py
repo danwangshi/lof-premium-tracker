@@ -17,6 +17,7 @@
 """
 import logging
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,16 +39,17 @@ class FundEstResult:
     holding_details: list = None          # 每只持仓贡献明细
     index_detail: dict = None             # 指数贡献明细
     nav: float | None = None              # 昨日净值
+    nav_date: date | None = None          # 昨日净值的**日期**（判断估算对象是哪一天）
     error: str | None = None
 
 
 async def load_fund_meta(session: AsyncSession) -> dict[str, dict]:
     """
     加载所有基金的元数据: 昨日净值 + 跟踪指数。
-    返回 {fund_code: {nav, index_name, index_tcode}}
+    返回 {fund_code: {nav, nav_date, index_name, index_tcode}}
     """
     r = await session.execute(text('''
-        SELECT fd.code, fd.nav, fi.index_code
+        SELECT fd.code, fd.nav, fd.nav_date, fi.index_code
         FROM fund_daily fd
         JOIN fund_info fi ON fi.code = fd.code
         WHERE fd.nav IS NOT NULL
@@ -56,10 +58,11 @@ async def load_fund_meta(session: AsyncSession) -> dict[str, dict]:
         )
     '''))
     meta = {}
-    for code, nav, idx_name in r.fetchall():
+    for code, nav, nav_date, idx_name in r.fetchall():
         idx_tcode = get_index_quote_code(idx_name) if idx_name else None
         meta[code] = {
             'nav': float(nav),
+            'nav_date': nav_date,
             'index_name': idx_name,
             'index_tcode': idx_tcode,
         }
@@ -91,6 +94,7 @@ def calc_est_nav(
     holdings: list[dict],
     quotes: dict[str, float],
     index_tcode: str | None,
+    nav_date: date | None = None,
 ) -> FundEstResult:
     """
     计算单只基金的估算净值。
@@ -100,6 +104,8 @@ def calc_est_nav(
         holdings: 持仓列表 [{asset_code, weight}]
         quotes: {asset_code: change_pct}
         index_tcode: 跟踪指数的腾讯代码 (如 sh000300)
+        nav_date: nav 的日期。估算值描述的是"nav_date 之后的那一天"，
+            调用方据此判断该估算属于哪个交易日 —— 见 nav_date 字段注释。
 
     Returns:
         FundEstResult
@@ -160,6 +166,7 @@ def calc_est_nav(
         holding_details=holding_details,
         index_detail=index_detail,
         nav=nav,
+        nav_date=nav_date,
     )
 
 
@@ -191,6 +198,7 @@ async def calc_all_est_navs(
             holdings=fund_holdings,
             quotes=quotes,
             index_tcode=m['index_tcode'],
+            nav_date=m.get('nav_date'),
         )
         result.fund_code = fc
         results[fc] = result

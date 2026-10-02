@@ -4,7 +4,7 @@
 import asyncio
 import hashlib
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -403,6 +403,149 @@ async def get_fund_batch(session_factory, codes: list[str]) -> list[dict]:
 # ── 图表数据 ────────────────────────────────────────────────
 
 
+# 每日"收盘估算净值"的取法。
+#
+# 背景：`fund_est_nav` 每个交易日有 ~164 条 5 分钟切片（实测 09:27–22:57），
+# 而原查询是 `ORDER BY trade_date DESC LIMIT :limit` —— 由于同一天有 164 行，
+# LIMIT 32 取回来的 32 行**全部属于同一天**（实测 distinct_days = 1）。于是：
+#   1. 日线图上估算净值只有最后一天有值，其余 29 天全是 null，趋势是空的；
+#   2. 被选中的是"当天最后一条切片"，即 22:57 那条。
+#
+# 第 2 点更严重：当晚净值公布后，`load_fund_meta` 取到的基准净值就变成了
+# **当天**的净值，之后的切片算的其实是**下一个交易日**的估算，却仍然挂在
+# 当天的 trade_date 上。实测 161725（2026-09-30）：
+#
+#     15:07 切片  基准 0.5169（09-29 净值）  估算 0.5317   ← 这才是 09-30 的收盘估算
+#     20:02 切片  基准 0.5314（09-30 净值）  估算 0.5466   ← 这是 10-01 的估算
+#
+# 09-30 实际净值 0.5314，真实误差 +0.06%；而按"最后一条切片"取会显示 0.5466，
+# 误差 +2.86% —— 把误差放大了约 45 倍。这比"没有数据"更糟：它给用户一个
+# 看起来精确、实际错误的估算准确度。
+#
+# 因此按"当日收盘时刻、且基准净值仍是上一日"来取，取不到就给空值
+# （对齐项目原则：没有正确且对得上时间戳的数据，就用空值，不要误导用户）。
+EST_NAV_CLOSE_SQL = text("""
+WITH day_open AS (
+    SELECT trade_date, min(snapshot_time) AS first_ts
+    FROM fund_est_nav
+    WHERE code = :code
+      AND trade_date >= :from_date
+    GROUP BY trade_date
+),
+day_baseline AS (
+    SELECT o.trade_date, e.nav AS open_nav
+    FROM day_open o
+    JOIN fund_est_nav e
+      ON e.code = :code
+     AND e.trade_date = o.trade_date
+     AND e.snapshot_time = o.first_ts
+)
+SELECT DISTINCT ON (e.trade_date)
+       e.trade_date, e.est_nav, e.est_change_pct, e.nav AS base_nav, e.snapshot_time
+FROM fund_est_nav e
+JOIN day_baseline b ON b.trade_date = e.trade_date
+WHERE e.code = :code
+  AND e.trade_date >= :from_date
+  -- 15:10 之前（含）：A 股 15:00 收盘，盘后第一批切片才真正反映收盘价
+  AND (e.snapshot_time AT TIME ZONE 'Asia/Shanghai')::time <= CAST(:close_cutoff AS time)
+  -- 基准净值必须与当日开盘第一条切片一致 = 当日净值尚未公布，估算对象确实是当日
+  AND e.nav IS NOT DISTINCT FROM b.open_nav
+ORDER BY e.trade_date DESC, e.snapshot_time DESC
+""")
+
+# 收盘时刻取哪条切片：15:00 收盘后第一批（15:02/15:07）最贴近收盘价，
+# 但作业可能漏跑，所以放宽到 15:10 并取窗口内最后一条。
+#
+# 必须是 datetime.time 而不是字符串：asyncpg 会按 `CAST($n AS time)` 把参数推断成
+# time 类型，传 '15:10' 会报 "invalid input for query argument: 'str' object has
+# no attribute 'hour'"（线上实测 500）。
+EST_NAV_CLOSE_CUTOFF = time(15, 10)
+
+
+def build_close_est_fields(trade_date_iso: str, est: dict | None,
+                           nav_val, nav_date) -> dict:
+    """组装某个交易日的"收盘估算净值 + 估算误差"。
+
+    单独抽出来是为了能脱离数据库直接测 —— 这段逻辑有两个容易写错的判断：
+
+    1. **估算值不是有就算数**：`est_nav` 若等于基准净值、且两个贡献都是 0，
+       说明估算器一个价格输入都没拿到，那是基准净值的副本而不是估算。
+       判据与列表页共用 `_est_is_meaningful`，两处口径必须一致。
+
+    2. **实际净值必须是当日的**：`fund_daily.nav` 在当日净值未公布时挂的是
+       **上一日**的净值（见 processors/nav_sync.py 的"归位"逻辑）。
+       拿它当"实际净值"去算误差，等于把基准当成结果，会得到接近 0 的假准确度。
+       所以只在 `nav_date == trade_date` 时才计算误差，否则留空。
+
+    Args:
+        trade_date_iso: 交易日 "YYYY-MM-DD"
+        est: `_load_est_nav_close_map` 里的一项，或 None（取不到收盘估算）
+        nav_val: fund_daily.nav（该交易日行上挂着的净值）
+        nav_date: fund_daily.nav_date（上面这个净值真正的日期）
+
+    Returns:
+        {est_nav, est_nav_time, est_nav_error, est_nav_realized}
+        取不到 / 不可核对的一律为 None —— 宁缺毋滥。
+    """
+    est_nav_val = None
+    est_time_val = None
+    if est and est.get("est_nav") is not None and _est_is_meaningful({
+        "est_nav": est["est_nav"],
+        "est_change_pct": est.get("est_change_pct"),
+        "nav": est.get("base_nav"),
+    }):
+        est_nav_val = est["est_nav"]
+        st = est.get("snapshot_time")
+        est_time_val = st.isoformat() if st is not None else None
+
+    realized = None
+    est_error = None
+    if (nav_date is not None and str(nav_date) == trade_date_iso
+            and nav_val is not None):
+        try:
+            realized = float(nav_val)
+        except (TypeError, ValueError):
+            realized = None
+        if realized is not None and realized > 0:
+            if est_nav_val is not None:
+                est_error = round((est_nav_val - realized) / realized * 100, 4)
+        else:
+            realized = None
+
+    return {
+        "est_nav": est_nav_val,
+        "est_nav_time": est_time_val,
+        "est_nav_error": est_error,
+        "est_nav_realized": realized,
+    }
+
+
+async def _load_est_nav_close_map(session, code: str, from_date) -> dict[str, dict]:
+    """取某只基金每个交易日的"收盘估算净值"。
+
+    Returns:
+        {trade_date(str): {est_nav, est_change_pct, base_nav, snapshot_time}}
+        取不到当日收盘估算的日期不会出现在结果里 —— 上层据此留空。
+    """
+    if from_date is None:
+        return {}
+
+    result = await session.execute(EST_NAV_CLOSE_SQL,
+                                   {"code": code, "from_date": from_date,
+                                    "close_cutoff": EST_NAV_CLOSE_CUTOFF})
+    out: dict[str, dict] = {}
+    for r in result.fetchall():
+        m = r._mapping
+        out[str(m["trade_date"])] = {
+            "est_nav": float(m["est_nav"]) if m["est_nav"] is not None else None,
+            "est_change_pct": (float(m["est_change_pct"])
+                               if m["est_change_pct"] is not None else None),
+            "base_nav": float(m["base_nav"]) if m["base_nav"] is not None else None,
+            "snapshot_time": m["snapshot_time"],
+        }
+    return out
+
+
 async def get_fund_chart(
     session_factory,
     code: str,
@@ -422,7 +565,7 @@ async def get_fund_chart(
 
     async with session_factory() as session:
         result = await session.execute(text("""
-            SELECT trade_date, close, nav, premium_rate,
+            SELECT trade_date, close, nav, nav_date, premium_rate,
                    volume, amount, change_pct, float_share, turnover_rate
             FROM fund_daily
             WHERE code = :code
@@ -431,15 +574,8 @@ async def get_fund_chart(
         """), {"code": code, "limit": fetch_limit})
         rows = [dict(r._mapping) for r in result.fetchall()]
 
-        # 查询估算净值快照
-        est_result = await session.execute(text("""
-            SELECT trade_date, est_nav
-            FROM fund_est_nav
-            WHERE code = :code
-            ORDER BY trade_date DESC
-            LIMIT :limit
-        """), {"code": code, "limit": fetch_limit})
-        est_map = {str(r[0]): float(r[1]) for r in est_result.fetchall() if r[1] is not None}
+        from_date = min((r["trade_date"] for r in rows), default=None)
+        est_map = await _load_est_nav_close_map(session, code, from_date)
 
     rows = list(reversed(rows))
 
@@ -467,11 +603,21 @@ async def get_fund_chart(
             amt = round(vol * 100 * cl, 2)
 
         td = str(row["trade_date"])
+        nav_val = row.get("nav")
+        nav_date = row.get("nav_date")
+
+        # 当日收盘估算净值 + 与实际公布净值的误差（取不到就留空）
+        est_fields = build_close_est_fields(td, est_map.get(td), nav_val, nav_date)
+
         chart.append({
             "date": td,
             "price": cl,
-            "nav": row.get("nav"),
-            "est_nav": est_map.get(td),
+            "nav": nav_val,
+            "nav_date": str(nav_date) if nav_date is not None else None,
+            "est_nav": est_fields["est_nav"],
+            "est_nav_time": est_fields["est_nav_time"],
+            "est_nav_error": est_fields["est_nav_error"],
+            "est_nav_realized": est_fields["est_nav_realized"],
             "premium_rate": row.get("premium_rate"),
             "volume": vol,
             "amount": amt,
