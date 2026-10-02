@@ -65,12 +65,24 @@ await page.addInitScript(() => {
   };
 });
 
-await page.goto(TARGET, { waitUntil: 'domcontentloaded' });
-// 等首屏板块数据上屏
+// 国内到 Cloudflare 的连接会偶发被关闭（ERR_CONNECTION_CLOSED），重试几次
+for (let attempt = 1; ; attempt++) {
+  try {
+    await page.goto(TARGET, { waitUntil: 'domcontentloaded' });
+    break;
+  } catch (e) {
+    if (attempt >= 4) throw e;
+    console.log(`  [goto 第 ${attempt} 次失败: ${e.message.split('\n')[0]}，重试]`);
+    await page.waitForTimeout(3000);
+  }
+}
+// 等首屏板块数据上屏。
+// 注意 waitForFunction 的签名是 (fn, arg, options) —— 第二个参数是 arg 不是 options，
+// 写成 (fn, {timeout}) 会被当成 arg，实际生效的是默认 30s 超时。
 await page.waitForFunction(() => {
   const cards = document.querySelectorAll('#fundTableBody tr.fund-row');
   return cards.length > 0;
-}, { timeout: 90000 });
+}, null, { timeout: 120000 });
 await page.waitForTimeout(2500);
 
 const readLabel = () => page.$eval('#fundTypeSelect .ft-select-label, #fundTypeSelect .ft-current-label',
@@ -109,16 +121,25 @@ async function switchTo(target) {
   }, target);
 
   const label = await readLabel();
-  // 等新数据真的上屏：等一次 API 完成且表格非空。
-  // 注意 API 可能压根不发（走了缓存 / 抛异常），所以这里超时后继续往下走，
-  // 让"没有请求"这件事作为一个结果被报出来，而不是让脚本崩掉。
+  // 两个时间点分开量：
+  //   tRows —— 屏幕上**出现新板块的行**（缓存铺上去即算，用户感知到的"切换完成"）
+  //   tData —— 服务端新数据真正到达并渲染
+  // 两者差距就是"缓存先行渲染"到底有没有生效。
+  let rowsShown = null;
+  const tClick = Date.now();
+  for (let i = 0; i < 400; i++) {
+    const n = await page.evaluate(() => document.querySelectorAll('#fundTableBody tr.fund-row').length);
+    if (n > 0) { rowsShown = Date.now() - tClick; break; }
+    await page.waitForTimeout(50);
+  }
+
   let waited = 'api+rows';
   try {
     await page.waitForFunction(() => {
       const done = window.__apiLog.some((r) => r.t2 || r.err);
       const rows = document.querySelectorAll('#fundTableBody tr.fund-row').length;
       return done && rows > 0;
-    }, { timeout: 45000 });
+    }, null, { timeout: 60000 });
   } catch (e) {
     waited = 'timeout';
   }
@@ -137,6 +158,7 @@ async function switchTo(target) {
 
   return {
     target, label, waited,
+    rowsMs: rowsShown,
     dataMs: tData,
     paintMs: tPaint,
     rows: await rowCount(),
@@ -157,10 +179,12 @@ for (let i = 0; i < ROUNDS; i++) {
 await browser.close();
 
 console.log('=== 板块切换耗时（点击 → 新数据上屏）===');
-console.log('目标    下拉文字   数据上屏     含渲染      行数   首行代码   等待条件');
+console.log('目标    下拉文字   缓存上屏    新数据到达   含渲染      行数   首行代码   等待条件');
 for (const r of results) {
   console.log(
-    `${r.target.padEnd(6)}  ${String(r.label).padEnd(9)}  ${String(r.dataMs + 'ms').padStart(9)}  ` +
+    `${r.target.padEnd(6)}  ${String(r.label).padEnd(9)}  ` +
+    `${String(r.rowsMs === null ? '无缓存' : r.rowsMs + 'ms').padStart(9)}  ` +
+    `${String(r.dataMs + 'ms').padStart(10)}  ` +
     `${String(r.paintMs + 'ms').padStart(9)}  ${String(r.rows).padStart(5)}   ${String(r.firstCode).padEnd(9)}  ${r.waited}`
   );
 }

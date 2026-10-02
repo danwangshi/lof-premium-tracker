@@ -63,13 +63,29 @@ async def cache_get(key: str) -> Optional[Any]:
         return None
 
 
-async def cache_set(key: str, data: Any, ttl: int, default=None) -> None:
-    """写缓存，Redis 不可用静默跳过。default 可指定自定义序列化器（如 datetime→isoformat）。"""
+async def cache_set(key: str, data: Any, ttl: int, default=None) -> bool:
+    """写缓存。Redis 不可用时降级（不抛异常），返回是否真的写成功。
+
+    `default` 可指定自定义序列化器（如 datetime→isoformat）。
+
+    **返回 bool 是为了让失败可见。** 原来这里是 `except Exception: pass`，
+    于是任何写入失败都无声无息 —— 实测踩到的两个后果：
+      * `est_nav:v2`（2.4MB，键空间里最大）被 allkeys-lru 淘汰后，
+        页面上的估算净值整列变成 `--`，日志里一个字都没有；
+      * 排查时 `_pool` 为 None（忘了 init_redis）也照样"成功"，
+        把探针自己的 bug 伪装成"Redis 写不进去"。
+    调用方需要知道结果时可以接住这个返回值；不需要的调用方行为不变。
+    """
+    if _pool is None:
+        logger.warning("缓存未初始化，写入跳过: %s", key)
+        return False
     try:
         payload = json.dumps(data, ensure_ascii=False, default=default) if default else json.dumps(data, ensure_ascii=False, default=str)
         await _pool.set(key, payload, ex=ttl)
-    except Exception:
-        pass
+        return True
+    except Exception as e:
+        logger.warning("缓存写入失败: %s (%s: %s)", key, type(e).__name__, e)
+        return False
 
 
 async def cache_delete(key: str) -> None:

@@ -100,6 +100,9 @@ async def run_est_nav(client: httpx.AsyncClient) -> dict:
                 'holding_details': r.holding_details or [],
                 'index_detail': r.index_detail,
                 'nav': r.nav,
+                # 基准净值的日期。估算描述的是"这一天之后的下一个交易日"，
+                # 落盘时用它判断这份估算到底属于哪个 trade_date。
+                'nav_date': r.nav_date.isoformat() if r.nav_date else None,
             }
 
         # 6. 写入 Redis
@@ -156,7 +159,10 @@ async def save_est_nav_snapshot(client: httpx.AsyncClient) -> int:
 
     trade_date = beijing_today_date()
     snapshot_time = beijing_now()
-    records = _est_nav_data_to_records(data)
+    records = _est_nav_data_to_records(data, trade_date)
+    if not records:
+        logger.warning("[EST_NAV_SNAPSHOT] 当日净值已公布，无归属今日的估算可保存")
+        return 0
 
     sf = database.async_session_factory
     result = await save_est_nav_batch(sf, records, trade_date, snapshot_time)
@@ -184,7 +190,11 @@ async def save_est_nav_slice(data: dict) -> int:
 
     trade_date = beijing_today_date()
     snapshot_time = beijing_now()
-    records = _est_nav_data_to_records(data)
+    records = _est_nav_data_to_records(data, trade_date)
+    if not records:
+        # 当日净值公布之后，所有估算都属于下一个交易日 —— 不该再写进今天
+        logger.info("[EST_NAV_SLICE] 当日净值已公布，本切片无归属今日的估算，跳过")
+        return 0
 
     sf = database.async_session_factory
     result = await save_est_nav_batch(sf, records, trade_date, snapshot_time)
@@ -194,10 +204,22 @@ async def save_est_nav_slice(data: dict) -> int:
     return saved
 
 
-def _est_nav_data_to_records(data: dict) -> list[dict]:
-    """将 run_est_nav() 返回的 dict 转为 saver 所需 records 列表"""
+def _est_nav_data_to_records(data: dict, trade_date=None) -> list[dict]:
+    """将 run_est_nav() 返回的 dict 转为 saver 所需 records 列表。
+
+    传入 `trade_date` 时会剔除"估算对象已经是下一个交易日"的记录 —— 见
+    `_is_next_session` 的说明。不传（仅测试用）则原样转换。
+    """
+    td = None
+    if trade_date is not None:
+        td = trade_date.isoformat() if hasattr(trade_date, "isoformat") else str(trade_date)
+
     records = []
+    skipped = 0
     for fc, info in data.items():
+        if td is not None and _is_next_session(info.get('nav_date'), td):
+            skipped += 1
+            continue
         records.append({
             'code': fc,
             'est_nav': info.get('est_nav'),
@@ -207,7 +229,35 @@ def _est_nav_data_to_records(data: dict) -> list[dict]:
             'coverage': info.get('coverage'),
             'nav': info.get('nav'),
         })
+    if skipped:
+        logger.info("[EST_NAV] 当日净值已公布，跳过归属于下一交易日的估算: %d 只", skipped)
     return records
+
+
+def _is_next_session(nav_date, trade_date_iso: str) -> bool:
+    """这份估算描述的是不是 trade_date **之后**的交易日。
+
+    估算值描述的是基准净值日之后的那个交易日：
+        est_nav = 基准净值(基准日) × (1 + 当日涨跌)
+    所以当**当日净值已经公布**时，`load_fund_meta` 取到的基准净值就是当日的，
+    此后算出来的估算描述的是**下一个交易日**，却仍被挂到今天的 trade_date 上。
+
+    实测 161725（2026-09-30，净值 20:02 到货）：
+        15:07 切片  基准 0.5169（09-29 净值）  估算 0.5317  ← 09-30 的收盘估算
+        20:02 切片  基准 0.5314（09-30 净值）  估算 0.5466  ← 其实是 10-01 的估算
+    当天 164 条切片里有 36 条属于后者，占了 22%。
+
+    这些行不只是无用（没有任何读取路径需要"下一日的早期估算"），而且有害：
+    详情页原来按"每天最后一条切片"取值，正好选中它们，把 09-30 的估算误差从
+    真实的 +0.06% 显示成 +2.86%。
+
+    判据只用基准净值的日期，不做数值比较 —— 净值恰好没变时数值比较会误判。
+    拿不到 nav_date（旧缓存/字段缺失）时返回 False，即**保留**记录：
+    宁可多写，也不要让"字段缺失"变成"当天没有估算数据"。
+    """
+    if not nav_date:
+        return False
+    return str(nav_date) >= trade_date_iso
 
 
 async def calc_single_est_nav(sf, code: str) -> dict | None:

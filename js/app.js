@@ -2341,12 +2341,23 @@ class LofFundMonitor {
             return;
         }
         const days = this._detailDays || 7;
+
+        // 请求序号守卫：图表有两个下拉（指标、区间），用户可以连着切，
+        // 于是会有两个请求同时在飞，谁先返回并不确定 —— 旧响应后到就会把
+        // 新图覆盖掉。实测：先切「估算净值 + 场外净值」再切「一月」，
+        // 30 日的数据被 7 日的旧响应盖回去，图上只剩 7 个点。
+        // 这和 #219 修的板块切换是同一类问题，处理方式保持一致：丢弃过期响应。
+        this._chartSeq = (this._chartSeq || 0) + 1;
+        const seq = this._chartSeq;
+
         api.getFundChart(code, days).then(chartResult => {
+            if (seq !== this._chartSeq) return;  // 已有更新的请求在飞，本次作废
             const chartData = chartResult.data || [];
             if (chartData.length > 0) {
                 this._renderDetailChart(chartData);
             }
         }).catch(err => {
+            if (seq !== this._chartSeq) return;
             console.error('[LOF] Chart load failed:', err);
         });
     }
@@ -2710,6 +2721,47 @@ class LofFundMonitor {
                 },
             },
         });
+
+        this._renderEstNavAccuracy(chartData, isEstNavMode);
+    }
+
+    /**
+     * 估算净值准确度摘要（只在「估算净值 + 场外净值」模式下显示）。
+     *
+     * 后端给的 est_nav 是**当日收盘时刻**（15:00 后第一批切片，且基准净值仍是
+     * 上一日的）那一份估算；est_nav_error 是它与该交易日**实际公布净值**的偏差，
+     * 净值尚未公布时两者都为空 —— 此时不显示，而不是拿上一日净值当结果去算，
+     * 那样会得到接近 0 的假准确度。
+     */
+    _renderEstNavAccuracy(chartData, visible) {
+        const el = document.getElementById('fdEstAccuracy');
+        if (!el) return;
+        if (!visible) { el.style.display = 'none'; return; }
+
+        const estDays = chartData.filter(d => d.est_nav != null).length;
+        const errs = chartData
+            .filter(d => d.est_nav_error != null)
+            .map(d => Math.abs(Number(d.est_nav_error)));
+
+        if (errs.length === 0) {
+            el.innerHTML = '<span class="fd-est-acc-hint">该区间还没有可核对的收盘估算'
+                + (estDays > 0 ? '（已有 ' + estDays + ' 天估算，但对应净值尚未公布）' : '')
+                + '。估算取当日收盘时刻的值，净值公布后才能算出误差。</span>';
+            el.style.display = 'flex';
+            return;
+        }
+
+        const mean = errs.reduce((a, b) => a + b, 0) / errs.length;
+        const worst = Math.max(...errs);
+        const hits = errs.filter(e => e <= 0.5).length;
+
+        el.innerHTML =
+            '<span>估算准确度：可核对 <b>' + errs.length + '</b> 个交易日</span>' +
+            '<span>平均误差 <b>' + mean.toFixed(2) + '%</b></span>' +
+            '<span>最大 <b>' + worst.toFixed(2) + '%</b></span>' +
+            '<span>误差 ≤0.5%：<b>' + hits + '/' + errs.length + '</b></span>' +
+            '<span class="fd-est-acc-hint">误差 =（当日收盘估算净值 − 实际公布净值）÷ 实际净值</span>';
+        el.style.display = 'flex';
     }
 
     _arbTooltip(context, chartData) {
@@ -2818,6 +2870,13 @@ class LofFundMonitor {
             html += '<div class="arb-tooltip-row"><span>场外净值</span><span>' + (tNav != null ? tNav.toFixed(3) : '--') + '</span></div>';
             var estNavVal = point.est_nav;
             html += '<div class="arb-tooltip-row"><span>估算净值</span><span style="color:#faad14">' + (estNavVal != null ? estNavVal.toFixed(4) : '--') + '</span></div>';
+            // 估算误差：只在当日净值已公布、可核对时显示
+            var estErr = point.est_nav_error;
+            if (estErr != null) {
+                var errCls = Math.abs(estErr) <= 0.5 ? 'arb-pos' : 'arb-neg';
+                html += '<div class="arb-tooltip-row"><span>估算误差</span><span class="' + errCls + '">'
+                     + (estErr >= 0 ? '+' : '') + Number(estErr).toFixed(2) + '%</span></div>';
+            }
         }
 
         html += '<div class="arb-tooltip-sep"></div>';
