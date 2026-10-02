@@ -24,10 +24,12 @@ build/
 venv/
 .venv/
 
-# 环境变量（所有 .env 开头的文件，但保留 .env.example 和 .env.dev）
-.env
-.env.local
-.env.production
+# 环境变量：忽略所有 .env*，只保留显式模板
+.env*
+!.env.example
+!*.env.example
+# 上面的 *.env.example 匹配不到 .env.dev.example（必须以 .env.example 结尾），单独放行
+!*.env.dev.example
 
 # v1 遗留
 backend/fee_cache.json
